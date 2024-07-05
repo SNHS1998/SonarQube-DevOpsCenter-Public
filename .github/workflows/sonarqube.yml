@@ -2,13 +2,13 @@ on:
     push:
       branches:
         - main
-        - f2qa
-        - developer
+        - f2qapublic
+        
         
     pull_request:
       branches:
         - main
-        - F2QA
+        - f2qapublic
        
       types:
         - opened
