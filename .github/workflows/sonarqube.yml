@@ -74,6 +74,7 @@ jobs:
         run: |
           sfdx force:source:deploy --checkonly --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ steps.extract_tests.outputs.test_classes }}
 
+          
       - name: Deploy Source to Developer Org
         run: |
           sfdx force:source:deploy --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ steps.extract_tests.outputs.test_classes }}
