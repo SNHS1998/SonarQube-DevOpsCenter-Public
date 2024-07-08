@@ -29,38 +29,24 @@ jobs:
       - name: Create JWT Key File
         run: echo "${{ secrets.JWT_PRIVATE_KEY }}" > assets/server.key
 
-      - name: Authorize Dev Hub (Production)
+      - name: Generate package.xml
         run: |
-          sfdx auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_PROD }} --jwtkeyfile assets/server.key --username ${{ secrets.SALESFORCE_PROD_USERNAME }} --setdefaultdevhubusername --setalias prod
+          sfdx force:source:manifest:create --outputdir ./manifest --manifestname package.xml
+          cat ./manifest/package.xml  # Display the generated package.xml for verification
 
-      - name: Authorize Developer Org
+      - name: Validate Deployment
         run: |
-          sfdx auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_DEVELOPER }} --jwtkeyfile assets/server.key --username ${{ secrets.DEVELOPER_SANDBOX_USERNAME }} --setalias developer
+          sfdx force:source:deploy --checkonly --manifest ./manifest/package.xml --targetusername developer
 
-      - name: Fetch Test Class Names
-        id: fetch_test_classes
+      - name: Deploy Source to Developer Org
         run: |
-          sfdx force:apex:class:list --json | jq -r '.result.records[] | select(.Name | startswith("Test")) | .Name' > test_classes.txt
-
-      - name: Read Test Classes
-        run: |
-          test_classes=$(<test_classes.txt)
-          echo "::set-output name=test_classes::$test_classes"
+          sfdx force:source:deploy --manifest ./manifest/package.xml --targetusername developer
 
       - name: Run Apex Tests and Generate Report
         run: |
-          test_classes="${{ steps.fetch_test_classes.outputs.test_classes }}"
-
-          for test_class in $test_classes; do
-            echo "Running tests in $test_class..."
-            result=$(sfdx force:apex:test:run -n "$test_class" --resultformat json --wait 10 --targetorg developer | tee result_${test_class}.json)
-            testrunid=$(jq -r '.result.testRunId' result_${test_class}.json)
-            sfdx force:apex:test:report --resultformat json --testrunid "$testrunid" --outputdir test-results --targetorg developer
-          done
-
-      - name: Convert Coverage Report to XML
-        run: |
-          sfdx force:apex:test:report --codecoverage --outputdir test-results --targetorg developer
+          result=$(sfdx force:apex:test:run --resultformat json --wait 10 --targetusername developer | tee result.json)
+          testrunid=$(jq -r '.result.testRunId' result.json)
+          sfdx apex:test:get --codecoverage --outputdir test-results -u developer
 
       - name: SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@v2.1.0
