@@ -14,14 +14,6 @@ private class TemperatureConverterTest {
         expectedFahrenheit = 212;
         actualFahrenheit = TemperatureConverter.celsiusToFahrenheit(celsius);
         System.assertEquals(expectedFahrenheit, actualFahrenheit, '100°C should be 212°F');
-
-        // Test with null value (should throw an exception)
-        try {
-            TemperatureConverter.celsiusToFahrenheit(null);
-            System.assert(false, 'Expected exception for null Celsius value');
-        } catch (IllegalArgumentException e) {
-            System.assertEquals('Celsius value cannot be null', e.getMessage());
-        }
     }
 
     @isTest
@@ -37,7 +29,21 @@ private class TemperatureConverterTest {
         expectedCelsius = 100;
         actualCelsius = TemperatureConverter.fahrenheitToCelsius(fahrenheit);
         System.assertEquals(expectedCelsius, actualCelsius, '212°F should be 100°C');
+    }
 
+    @isTest
+    static void testCelsiusToFahrenheitWithNull() {
+        // Test with null value (should throw an exception)
+        try {
+            TemperatureConverter.celsiusToFahrenheit(null);
+            System.assert(false, 'Expected exception for null Celsius value');
+        } catch (IllegalArgumentException e) {
+            System.assertEquals('Celsius value cannot be null', e.getMessage());
+        }
+    }
+
+    @isTest
+    static void testFahrenheitToCelsiusWithNull() {
         // Test with null value (should throw an exception)
         try {
             TemperatureConverter.fahrenheitToCelsius(null);
