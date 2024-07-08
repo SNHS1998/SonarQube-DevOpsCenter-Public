@@ -1,4 +1,4 @@
-name: Run Apex Tests and Generate Report
+name: CI/CD Pipeline for Salesforce with SonarCloud
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - 'WI-*'
 
 jobs:
-  test-and-report:
+  sonarqube:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -37,21 +37,30 @@ jobs:
         run: |
           sfdx auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_DEVELOPER }} --jwtkeyfile assets/server.key --username ${{ secrets.DEVELOPER_SANDBOX_USERNAME }} --setalias developer
 
-      - name: Push Source to Developer Org
+      - name: Fetch Test Class Names
+        id: fetch_test_classes
         run: |
-          sfdx force:source:push --forceoverwrite --targetusername developer
+          sfdx force:apex:class:list --json | jq -r '.result.records[] | select(.Name | startswith("Test")) | .Name' > test_classes.txt
 
-      - name: Run Apex Tests
+      - name: Read Test Classes
         run: |
-          sfdx force:apex:test:run --result-format json --wait 10 --target-org developer | tee result.json
+          test_classes=$(<test_classes.txt)
+          echo "::set-output name=test_classes::$test_classes"
 
-      - name: Extract Test Run ID
+      - name: Run Apex Tests and Generate Report
         run: |
-          testrunid=$(jq -r '.result.testRunId' result.json)
+          test_classes="${{ steps.fetch_test_classes.outputs.test_classes }}"
 
-      - name: Generate Test Report
+          for test_class in $test_classes; do
+            echo "Running tests in $test_class..."
+            result=$(sfdx force:apex:test:run -n "$test_class" --resultformat json --wait 10 --targetorg developer | tee result_${test_class}.json)
+            testrunid=$(jq -r '.result.testRunId' result_${test_class}.json)
+            sfdx force:apex:test:report --resultformat json --testrunid "$testrunid" --outputdir test-results --targetorg developer
+          done
+
+      - name: Convert Coverage Report to XML
         run: |
-          sfdx force:apex:test:report --result-format json --testrunid "$testrunid" --outputdir test-results --target-org developer
+          sfdx force:apex:test:report --codecoverage --outputdir test-results --targetorg developer
 
       - name: SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@v2.1.0
