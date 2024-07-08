@@ -41,11 +41,14 @@ jobs:
         run: |
           sfdx force:source:push --forceoverwrite --targetusername developer
 
+
       - name: Run Apex Tests and Generate Report
         run: |
-          result=$(sfdx force:apex:test:run --resultformat json --wait 10 --targetusername developer | tee result.json)
+          result=$(sfdx force:apex:test:run --resultformat json --wait 10 --target-org developer | tee result.json)
           testrunid=$(jq -r '.result.testRunId' result.json)
-          sfdx force:apex:test:report --resultformat json --testrunid "$testrunid" --outputdir test-results --targetusername developer
+          sfdx force:apex:test:report --resultformat json --testrunid "$testrunid" --outputdir test-results --target-org developer
+        shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+
 
       - name: Convert Coverage Report to XML
         run: |
