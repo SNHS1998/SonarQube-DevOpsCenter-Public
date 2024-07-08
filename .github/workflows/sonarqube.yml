@@ -16,7 +16,13 @@ jobs:
           fetch-depth: 0
 
       - name: Install Salesforce CLI
-        uses: amtrack/sfdx-actions/setup-sfdx@v1
+        run: |
+            wget https://developer.salesforce.com/media/salesforce-cli/sfdx-linux-amd64.tar.xz
+            mkdir sfdx-cli
+            tar xJf sfdx-linux-amd64.tar.xz -C sfdx-cli --strip-components 1
+            ./sfdx-cli/install
+
+      
 
       - name: Create JWT Key File
         run: echo "${{ secrets.JWT_PRIVATE_KEY }}" > assets/server.key
