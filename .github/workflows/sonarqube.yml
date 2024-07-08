@@ -39,7 +39,7 @@ jobs:
 
       - name: Push Source to Developer Org
         run: |
-          sfdx force:source:push -u developer
+          sfdx force:source:push -u developer --forceoverwrite
           sfdx force:apex:test:run --resultformat junit --outputdir test-results/apex -u developer
           sfdx force:apex:test:report --codecoverage --resultformat json --outputdir test-results -u developer
 
