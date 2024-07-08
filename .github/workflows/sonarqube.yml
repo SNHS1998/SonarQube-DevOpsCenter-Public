@@ -24,8 +24,7 @@ jobs:
           node-version: '16'
 
       - name: Install Salesforce CLI
-        run: |
-          npm install -g sfdx-cli
+        run: npm install -g sfdx-cli
 
       - name: Create JWT Key File
         run: echo "${{ secrets.JWT_PRIVATE_KEY }}" > assets/server.key
@@ -40,9 +39,9 @@ jobs:
 
       - name: Push Source to Developer Org
         run: |
-          sfdx force:source:push --targetusername developer
+          sfdx force:source:push --forceoverwrite --targetusername developer
 
-      - name: Run Apex Tests
+      - name: Run Apex Tests and Generate Report
         run: |
           result=$(sfdx force:apex:test:run --resultformat json --wait 10 --targetusername developer | tee result.json)
           testrunid=$(jq -r '.result.testRunId' result.json)
@@ -50,7 +49,7 @@ jobs:
 
       - name: Convert Coverage Report to XML
         run: |
-          sfdx force:apex:test:report --resultformat cobertura --testrunid "$testrunid" --outputdir test-results --targetusername developer
+          sfdx force:apex:test:report --codecoverage --outputdir test-results --targetusername developer
 
       - name: SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@v2.1.0
@@ -62,7 +61,7 @@ jobs:
         with:
           args: >
             -Dsonar.projectKey=YourProjectKey
-            -Dsonar.apex.coverage.reportPaths=test-results/cobertura/coverage.xml
+            -Dsonar.apex.coverage.reportPaths=test-results/apex-codecoverage.xml
 
       - name: Check SonarQube Quality Gate
         id: quality_gate
