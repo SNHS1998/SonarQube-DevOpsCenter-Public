@@ -31,7 +31,7 @@ jobs:
 
       - name: Generate package.xml
         run: |
-          sfdx force:source:manifest:create --outputdir ./manifest --manifestname package.xml
+          sfdx project:manifest:create --outputdir ./manifest --manifestname package.xml
           cat ./manifest/package.xml  # Display the generated package.xml for verification
 
       - name: Validate Deployment
@@ -46,7 +46,7 @@ jobs:
         run: |
           result=$(sfdx force:apex:test:run --resultformat json --wait 10 --targetusername developer | tee result.json)
           testrunid=$(jq -r '.result.testRunId' result.json)
-          sfdx apex:test:get --codecoverage --outputdir test-results -u developer
+          sfdx force:apex:test:report --codecoverage --outputdir test-results --testrunid "$testrunid" --targetusername developer
 
       - name: SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@v2.1.0
