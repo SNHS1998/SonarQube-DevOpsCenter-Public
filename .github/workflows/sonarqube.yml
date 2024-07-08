@@ -39,9 +39,10 @@ jobs:
 
       - name: Generate Package.xml for Changed Components
         run: |
-          git diff --name-only HEAD^..HEAD | grep "\.cls$" | sed 's|force-app/main/default/classes/||' > changed-components.txt
+          mkdir -p ./manifest
+          git diff --name-only HEAD^..HEAD > all-changed-components.txt
+          grep "\.cls$" all-changed-components.txt | sed 's|force-app/main/default/classes/||' > changed-components.txt
           if [ -s changed-components.txt ]; then
-            mkdir -p ./manifest
             echo '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' > ./manifest/package.xml
             echo '<Package xmlns="http://soap.sforce.com/2006/04/metadata">' >> ./manifest/package.xml
             echo '  <types>' >> ./manifest/package.xml
