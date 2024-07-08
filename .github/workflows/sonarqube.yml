@@ -1,4 +1,4 @@
-name: CI/CD Pipeline for Salesforce with SonarCloud
+name: Run Apex Tests and Generate Report
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
       - 'WI-*'
 
 jobs:
-  sonarqube:
+  test-and-report:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -41,18 +41,17 @@ jobs:
         run: |
           sfdx force:source:push --forceoverwrite --targetusername developer
 
-
-      - name: Run Apex Tests and Generate Report
+      - name: Run Apex Tests
         run: |
-          result=$(sfdx force:apex:test:run --resultformat json --wait 10 --target-org developer | tee result.json)
+          sfdx force:apex:test:run --result-format json --wait 10 --target-org developer | tee result.json
+
+      - name: Extract Test Run ID
+        run: |
           testrunid=$(jq -r '.result.testRunId' result.json)
-          sfdx force:apex:test:report --resultformat json --testrunid "$testrunid" --outputdir test-results --target-org developer
-        shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
 
-
-      - name: Convert Coverage Report to XML
+      - name: Generate Test Report
         run: |
-          sfdx force:apex:test:report --codecoverage --outputdir test-results --targetusername developer
+          sfdx force:apex:test:report --result-format json --testrunid "$testrunid" --outputdir test-results --target-org developer
 
       - name: SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@v2.1.0
