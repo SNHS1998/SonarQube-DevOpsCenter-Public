@@ -21,7 +21,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v2
         with:
-          node-version: '14'
+          node-version: '16'
 
       - name: Install Salesforce CLI
         run: npm install -g sfdx-cli
@@ -40,7 +40,6 @@ jobs:
       - name: Push Source to Developer Org
         run: |
           sfdx force:source:push -u developer
-          # Add logic to run tests (`sfdx force:apex:test:run`) and generate a test coverage report (`sfdx force:apex:test:report`) before deployment
           sfdx force:apex:test:run --resultformat junit --outputdir test-results/apex -u developer
           sfdx force:apex:test:report --codecoverage --resultformat json --outputdir test-results -u developer
 
