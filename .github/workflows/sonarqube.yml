@@ -18,15 +18,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v2
-        with:
-          node-version: '16'
-
       - name: Install Salesforce CLI
         run: |
-          curl -fsSL https://developer.salesforce.com/media/salesforce-cli/sfdx-linux-amd64.tar.xz | tar xJf - -C /tmp/
-          sudo /tmp/sfdx/install
+          wget -qO /tmp/sfdx-linux-amd64.tar.xz https://developer.salesforce.com/media/salesforce-cli/sfdx-linux-amd64.tar.xz
+          mkdir /tmp/sfdx-cli
+          tar xJf /tmp/sfdx-linux-amd64.tar.xz -C /tmp/sfdx-cli --strip-components 1
+          sudo /tmp/sfdx-cli/install
 
       - name: Create JWT Key File
         run: echo "${{ secrets.JWT_PRIVATE_KEY }}" > assets/server.key
@@ -39,9 +36,10 @@ jobs:
         run: |
           sfdx force:auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_DEVELOPER }} --jwtkeyfile assets/server.key --username ${{ secrets.DEVELOPER_SANDBOX_USERNAME }} --setalias developer
 
-      - name: Run Apex Tests and Generate Coverage Report
+      - name: Push Source to Developer Org
         run: |
           sfdx force:source:push -u developer
+          # Add logic to run tests and check coverage before deployment
           sfdx force:apex:test:run --resultformat junit --outputdir test-results/apex -u developer
           sfdx force:apex:test:report --codecoverage --resultformat json --outputdir test-results -u developer
 
