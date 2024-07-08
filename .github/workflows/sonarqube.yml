@@ -17,12 +17,10 @@ jobs:
 
       - name: Install Salesforce CLI
         run: |
-            wget https://developer.salesforce.com/media/salesforce-cli/sfdx-linux-amd64.tar.xz
-            mkdir sfdx-cli
-            tar xJf sfdx-linux-amd64.tar.xz -C sfdx-cli --strip-components 1
-            ./sfdx-cli/install
-
-      
+          wget https://developer.salesforce.com/media/salesforce-cli/sfdx-linux-amd64.tar.xz -O sfdx-linux-amd64.tar.xz
+          mkdir sfdx-cli
+          tar xJf sfdx-linux-amd64.tar.xz -C sfdx-cli --strip-components 1
+          ./sfdx-cli/install
 
       - name: Create JWT Key File
         run: echo "${{ secrets.JWT_PRIVATE_KEY }}" > assets/server.key
