@@ -1,67 +1,76 @@
+name: CI/CD Pipeline for Salesforce with SonarCloud
+
 on:
-    push:
-      branches:
-        
-        - f2qapublic
-        
-        
-    pull_request:
-      branches:
-        
-        - f2qapublic
-       
-      types:
-        - opened
-        - synchronize
-        - reopened
-  
-name: Main Workflow
-  
+  push:
+    branches:
+      - 'WI-*'
+
 jobs:
-    sonarqube:
-      runs-on: ubuntu-latest
-      steps:
-        - name: Checkout code
-          uses: actions/checkout@v4
-          with:
-            fetch-depth: 0
-  
-        - name: Set up Java
-          uses: actions/setup-java@v3
-          with:
-            distribution: 'temurin'
-            java-version: '11'
-  
-        - name: SonarQube Scan
-          uses: sonarsource/sonarqube-scan-action@v2.1.0
-          env:
-            SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-            SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-            SONAR_SCANNER_OPTS: '-Xmx1024m'
-            SONAR_ORGANIZATION: ${{ secrets.SONAR_ORGANIZATION }}
-  
-        - name: Check SonarQube Quality Gate
-          id: quality_gate
-          env:
-            SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-            SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-          run: |
-            status=$(curl -s "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=SNHS1998_SonarQube-GitHubActions" -u "${SONAR_TOKEN}:")
-            coverage=$(echo "$status" | jq -r '.projectStatus.conditions[] | select(.metricKey == "new_coverage") | .actualValue')
-  
-            echo "Current New Code Coverage: $coverage%"
-  
-            if (( $(echo "$coverage == null" | bc -l) )); then
-              echo "New code coverage information is not available."
-              exit 1
-            elif (( $(echo "$coverage < 80" | bc -l) )); then
-              echo "New code coverage is less than 80%. Failing the build."
-              exit 1
-            else
-              echo "New code coverage is sufficient. Proceeding with the build."
-            fi
-  
-        - name: Fail build on Quality Gate status
-          if: steps.quality_gate.outcome != 'success'
-          run: exit 1
-  
+  sonarqube:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Install Salesforce CLI
+        uses: amtrack/sfdx-actions/setup-sfdx@v1
+
+      - name: Create JWT Key File
+        run: echo "${{ secrets.JWT_PRIVATE_KEY }}" > assets/server.key
+
+      - name: Authorize Dev Hub (Production)
+        run: |
+          sfdx force:auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_PROD }} --jwtkeyfile assets/server.key --username ${{ secrets.SALESFORCE_PROD_USERNAME }} --setdefaultdevhubusername --setalias prod
+
+      - name: Authorize Developer Org
+        run: |
+          sfdx force:auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_DEVELOPER }} --jwtkeyfile assets/server.key --username ${{ secrets.DEVELOPER_SANDBOX_USERNAME }} --setalias developer
+
+      - name: Run Apex Tests and Generate Coverage Report
+        run: |
+          sfdx force:source:push -u developer
+          sfdx force:apex:test:run --resultformat junit --outputdir test-results/apex -u developer
+          sfdx force:apex:test:report --codecoverage --resultformat json --outputdir test-results -u developer
+
+      - name: Convert Coverage Report to XML
+        run: sfdx force:apex:test:report --codecoverage --resultformat cobertura --outputdir test-results -u developer
+
+      - name: SonarQube Scan
+        uses: sonarsource/sonarqube-scan-action@v2.1.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_SCANNER_OPTS: '-Xmx1024m'
+          SONAR_ORGANIZATION: ${{ secrets.SONAR_ORGANIZATION }}
+        with:
+          args: >
+            -Dsonar.projectKey=YourProjectKey
+            -Dsonar.apex.coverage.reportPaths=test-results/cobertura/coverage.xml
+
+      - name: Check SonarQube Quality Gate
+        id: quality_gate
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        run: |
+          status=$(curl -s "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=YourProjectKey" -u "${SONAR_TOKEN}:")
+          coverage=$(echo "$status" | jq -r '.projectStatus.conditions[] | select(.metricKey == "new_coverage") | .actualValue')
+
+          echo "Current New Code Coverage: $coverage%"
+
+          if (( $(echo "$coverage == null" | bc -l) )); then
+            echo "New code coverage information is not available."
+            exit 1
+          elif (( $(echo "$coverage < 80" | bc -l) )); then
+            echo "New code coverage is less than 80%. Failing the build."
+            exit 1
+          else
+            echo "New code coverage is sufficient. Proceeding with the build."
+          fi
+
+      - name: Fail build on Quality Gate status
+        if: steps.quality_gate.outcome != 'success'
+        run: exit 1
