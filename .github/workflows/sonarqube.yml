@@ -31,20 +31,24 @@ jobs:
 
       - name: Authorize Dev Hub (Production)
         run: |
-          sfdx force:auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_PROD }} --jwtkeyfile assets/server.key --username ${{ secrets.SALESFORCE_PROD_USERNAME }} --setdefaultdevhubusername --setalias prod
+          sfdx auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_PROD }} --jwtkeyfile assets/server.key --username ${{ secrets.SALESFORCE_PROD_USERNAME }} --setdefaultdevhubusername --setalias prod
 
       - name: Authorize Developer Org
         run: |
-          sfdx force:auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_DEVELOPER }} --jwtkeyfile assets/server.key --username ${{ secrets.DEVELOPER_SANDBOX_USERNAME }} --setalias developer
+          sfdx auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_DEVELOPER }} --jwtkeyfile assets/server.key --username ${{ secrets.DEVELOPER_SANDBOX_USERNAME }} --setalias developer
 
       - name: Push Source to Developer Org
         run: |
           sfdx force:source:push -u developer --forceoverwrite
-          sfdx force:apex:test:run --resultformat junit --outputdir test-results/apex -u developer
-          sfdx force:apex:test:report --codecoverage --resultformat json --outputdir test-results -u developer
+
+      - name: Run Apex Tests
+        run: |
+          result=$(sfdx force:apex:test:run --resultformat json --wait 10 --targetusername developer | tee result.json)
+          testrunid=$(echo "$result" | jq -r '.result.testRunId')
+          sfdx force:apex:test:report --resultformat json --testrunid "$testrunid" --outputdir test-results -u developer
 
       - name: Convert Coverage Report to XML
-        run: sfdx force:apex:test:report --codecoverage --resultformat cobertura --outputdir test-results -u developer
+        run: sfdx force:apex:test:report --codecoverage --outputdir test-results -u developer
 
       - name: SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@v2.1.0
@@ -56,7 +60,7 @@ jobs:
         with:
           args: >
             -Dsonar.projectKey=YourProjectKey
-            -Dsonar.apex.coverage.reportPaths=test-results/cobertura/coverage.xml
+            -Dsonar.apex.coverage.reportPaths=test-results/apex-codecoverage.xml
 
       - name: Check SonarQube Quality Gate
         id: quality_gate
