@@ -17,4 +17,4 @@ public with sharing class TemperatureConverter {
     }
 }
 // This is to check the test class trigger
-//added the change
+//added the changes
