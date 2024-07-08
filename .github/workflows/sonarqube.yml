@@ -8,9 +8,6 @@ on:
 jobs:
   sonarqube:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash
 
     steps:
       - name: Checkout code
@@ -21,35 +18,33 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v2
         with:
-          node-version: '16'
+          node-version: '14'
 
       - name: Install Salesforce CLI
-        run: npm install -g sfdx-cli
+        run: |
+          wget -qO- https://developer.salesforce.com/media/salesforce-cli/sfdx-linux-amd64.tar.xz | tar xJf - -C /tmp/
+          sudo ./sfdx-cli/install
 
       - name: Create JWT Key File
         run: echo "${{ secrets.JWT_PRIVATE_KEY }}" > assets/server.key
 
       - name: Authorize Dev Hub (Production)
         run: |
-          sfdx auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_PROD }} --jwtkeyfile assets/server.key --username ${{ secrets.SALESFORCE_PROD_USERNAME }} --setdefaultdevhubusername --setalias prod
+          sfdx force:auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_PROD }} --jwtkeyfile assets/server.key --username ${{ secrets.SALESFORCE_PROD_USERNAME }} --setdefaultdevhubusername --setalias prod
 
       - name: Authorize Developer Org
         run: |
-          sfdx auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_DEVELOPER }} --jwtkeyfile assets/server.key --username ${{ secrets.DEVELOPER_SANDBOX_USERNAME }} --setalias developer
+          sfdx force:auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_DEVELOPER }} --jwtkeyfile assets/server.key --username ${{ secrets.DEVELOPER_SANDBOX_USERNAME }} --setalias developer
 
-      - name: Push Source to Developer Org
+      - name: Run Apex Tests and Generate Coverage Report
         run: |
-          sfdx force:source:push --forceoverwrite --targetusername developer
-
-      - name: Run Apex Tests and Generate Report
-        run: |
-          result=$(sfdx force:apex:test:run --resultformat json --wait 10 --targetusername developer | tee result.json)
+          sfdx force:source:push -u developer
+          result=$(sfdx force:apex:test:run --resultformat json --wait 10 --target-org developer | tee result.json)
           testrunid=$(jq -r '.result.testRunId' result.json)
-          sfdx force:apex:test:report --resultformat json --testrunid "$testrunid" --outputdir test-results --targetusername developer
+          sfdx force:apex:test:report --resultformat json --testrunid "$testrunid" --outputdir test-results --target-org developer
 
       - name: Convert Coverage Report to XML
-        run: |
-          sfdx force:apex:test:report --codecoverage --outputdir test-results --targetusername developer
+        run: sfdx force:apex:test:report --resultformat cobertura --testrunid "$testrunid" --outputdir test-results --target-org developer
 
       - name: SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@v2.1.0
@@ -61,7 +56,7 @@ jobs:
         with:
           args: >
             -Dsonar.projectKey=YourProjectKey
-            -Dsonar.apex.coverage.reportPaths=test-results/apex-codecoverage.xml
+            -Dsonar.apex.coverage.reportPaths=test-results/cobertura/coverage.xml
 
       - name: Check SonarQube Quality Gate
         id: quality_gate
