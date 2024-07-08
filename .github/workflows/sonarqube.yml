@@ -43,12 +43,13 @@ jobs:
 
       - name: Run Apex Tests and Generate Report
         run: |
-          result=$(sfdx force:apex:test:run --resultformat json --wait 10 --targetorg username --targetusername developer | tee result.json)
+          result=$(sfdx force:apex:test:run --resultformat json --wait 10 --targetusername developer | tee result.json)
           testrunid=$(jq -r '.result.testRunId' result.json)
           sfdx force:apex:test:report --resultformat json --testrunid "$testrunid" --outputdir test-results --targetusername developer
 
       - name: Convert Coverage Report to XML
-        run: sfdx force:apex:test:report --codecoverage --outputdir test-results --targetusername developer
+        run: |
+          sfdx force:apex:test:report --codecoverage --outputdir test-results --targetusername developer
 
       - name: SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@v2.1.0
