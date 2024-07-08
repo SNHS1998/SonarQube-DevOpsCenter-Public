@@ -29,9 +29,24 @@ jobs:
       - name: Create JWT Key File
         run: echo "${{ secrets.JWT_PRIVATE_KEY }}" > assets/server.key
 
+      - name: Determine Changed Components
+        id: changed_components
+        run: |
+          # Example: Detect changed Apex classes
+          git diff --name-only HEAD^..HEAD | grep "\.cls$" | sed 's|force-app/main/default/classes/||' > changed-components.txt
+
       - name: Generate package.xml
         run: |
-          sfdx project:manifest:create --outputdir ./manifest --manifestname package.xml
+          echo '<?xml version="1.0" encoding="UTF-8"?>' > ./manifest/package.xml
+          echo '<Package xmlns="http://soap.sforce.com/2006/04/metadata">' >> ./manifest/package.xml
+          echo '    <types>' >> ./manifest/package.xml
+          while IFS= read -r line; do
+              echo "        <members>${line%.cls}</members>" >> ./manifest/package.xml
+          done < changed-components.txt
+          echo '        <name>ApexClass</name>' >> ./manifest/package.xml
+          echo '    </types>' >> ./manifest/package.xml
+          echo '    <version>52.0</version>' >> ./manifest/package.xml
+          echo '</Package>' >> ./manifest/package.xml
           cat ./manifest/package.xml  # Display the generated package.xml for verification
 
       - name: Validate Deployment
