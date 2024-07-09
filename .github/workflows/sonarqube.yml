@@ -57,38 +57,35 @@ jobs:
             echo '  <version>53.0</version>' >> ./manifest/package.xml
             echo '</Package>' >> ./manifest/package.xml
             cat ./manifest/package.xml
+            test_classes=$(xmlstarlet sel -t -v "//members" -o "," ./manifest/package.xml | sed 's/,$//')
+            echo "test_classes=$test_classes" >> $GITHUB_ENV
           else
             echo "No Apex classes were changed."
             exit 0
-          
+          fi
+
       - name: Install xmlstarlet
         run: sudo apt-get install -y xmlstarlet
 
-      - name: Extract Test Class Names from Package.xml
-        id: extract_tests
-        run: |
-          test_classes=$(xmlstarlet sel -t -v "//members" -o "," ./manifest/package.xml | sed 's/,$//')
-          echo "test_classes=$test_classes" >> $GITHUB_ENV
-
       - name: Validate Deployment using Manifest
-        if: steps.extract_tests.outputs.test_classes != ''
+        if: env.test_classes != ''
         run: |
           sfdx force:source:deploy --checkonly --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ env.test_classes }}
 
       - name: Deploy Source to Developer Org
-        if: steps.extract_tests.outputs.test_classes != ''
+        if: env.test_classes != ''
         run: |
           sfdx force:source:deploy --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ env.test_classes }}
 
       - name: Run Apex Tests and Generate Report
-        if: steps.extract_tests.outputs.test_classes != ''
+        if: env.test_classes != ''
         run: |
           result=$(sf apex run test --result-format json --wait 10 --target-org developer | tee result.json)
           testrunid=$(jq -r '.testRunId' result.json)
           sf apex get test --result-format json --testrunid "$testrunid" --outputdir test-results --target-org developer
 
       - name: Convert Coverage Report to XML
-        if: steps.extract_tests.outputs.test_classes != ''
+        if: env.test_classes != ''
         run: |
           sf apex get test --codecoverage --outputdir test-results --target-org developer
 
@@ -101,7 +98,7 @@ jobs:
           SONAR_ORGANIZATION: ${{ secrets.SONAR_ORGANIZATION }}
         with:
           args: >
-            -Dsonar.projectKey=YourProjectKey
+            -Dsonar.projectKey=SNHS1998_SonarQube-DevOpsCenter-Public
             -Dsonar.apex.coverage.reportPaths=test-results/apex-codecoverage.xml
 
       - name: Check SonarQube Quality Gate
@@ -110,7 +107,7 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         run: |
-          status=$(curl -s "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=YourProjectKey" -u "${SONAR_TOKEN}:")
+          status=$(curl -s "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=SNHS1998_SonarQube-DevOpsCenter-Public" -u "${SONAR_TOKEN}:")
           coverage=$(echo "$status" | jq -r '.projectStatus.conditions[] | select(.metricKey == "new_coverage") | .actualValue')
 
           echo "Current New Code Coverage: $coverage%"
