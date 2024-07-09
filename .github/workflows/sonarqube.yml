@@ -51,7 +51,7 @@ jobs:
           else
             echo "::set-output name=TEST_CLASSES::"
             echo "TEST_CLASSES=" >> $GITHUB_ENV
-          
+          fi
       - name: Debug Test Classes
         run: |
           echo "Test classes: ${{ needs.generate_and_validate.outputs.test_classes }}"
