@@ -59,13 +59,8 @@ jobs:
             cat ./manifest/package.xml
           else
             echo "No Apex classes were changed."
-          fi
-
-      - name: Skip if no Apex classes changed
-        if: steps.generate_package.outputs.changed == 'false'
-        run: echo "No Apex classes changed. Skipping deployment and tests."
-        continue-on-error: true
-
+            exit 0
+          
       - name: Install xmlstarlet
         run: sudo apt-get install -y xmlstarlet
 
@@ -73,17 +68,17 @@ jobs:
         id: extract_tests
         run: |
           test_classes=$(xmlstarlet sel -t -v "//members" -o "," ./manifest/package.xml | sed 's/,$//')
-          echo "::set-output name=test_classes::$test_classes"
+          echo "test_classes=$test_classes" >> $GITHUB_ENV
 
       - name: Validate Deployment using Manifest
         if: steps.extract_tests.outputs.test_classes != ''
         run: |
-          sfdx force:source:deploy --checkonly --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ steps.extract_tests.outputs.test_classes }}
+          sfdx force:source:deploy --checkonly --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ env.test_classes }}
 
       - name: Deploy Source to Developer Org
         if: steps.extract_tests.outputs.test_classes != ''
         run: |
-          sfdx force:source:deploy --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ steps.extract_tests.outputs.test_classes }}
+          sfdx force:source:deploy --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ env.test_classes }}
 
       - name: Run Apex Tests and Generate Report
         if: steps.extract_tests.outputs.test_classes != ''
@@ -106,7 +101,7 @@ jobs:
           SONAR_ORGANIZATION: ${{ secrets.SONAR_ORGANIZATION }}
         with:
           args: >
-            -Dsonar.projectKey=SNHS1998_SonarQube-DevOpsCenter-Public
+            -Dsonar.projectKey=YourProjectKey
             -Dsonar.apex.coverage.reportPaths=test-results/apex-codecoverage.xml
 
       - name: Check SonarQube Quality Gate
@@ -115,7 +110,7 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         run: |
-          status=$(curl -s "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=SNHS1998_SonarQube-DevOpsCenter-Public" -u "${SONAR_TOKEN}:")
+          status=$(curl -s "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=YourProjectKey" -u "${SONAR_TOKEN}:")
           coverage=$(echo "$status" | jq -r '.projectStatus.conditions[] | select(.metricKey == "new_coverage") | .actualValue')
 
           echo "Current New Code Coverage: $coverage%"
