@@ -47,10 +47,10 @@ jobs:
             cat ./manifest/package.xml
             test_classes=$(xmlstarlet sel -t -v "//members" -o "," ./manifest/package.xml | sed 's/,$//')
             echo "Set TEST_CLASSES to: $test_classes"  # Debug output to verify
-            echo "::set-env name=TEST_CLASSES::$test_classes"
+            echo "TEST_CLASSES=$test_classes" >> $GITHUB_ENV  # Store TEST_CLASSES in GitHub environment
           else
             echo "No classes found, TEST_CLASSES set to empty"  # Debug output to verify
-            echo "::set-env name=TEST_CLASSES::"
+            echo "TEST_CLASSES=" >> $GITHUB_ENV  # Ensure TEST_CLASSES is empty
           fi
 
       - name: Create JWT Key File
