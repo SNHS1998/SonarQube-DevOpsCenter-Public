@@ -8,8 +8,8 @@ on:
 jobs:
   generate_and_validate:
     runs-on: ubuntu-latest
-    outputs:
-      test_classes: ${{ steps.generate_package.outputs.test_classes }}
+    env:
+      TEST_CLASSES: ''
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
@@ -46,20 +46,12 @@ jobs:
             echo '</Package>' >> ./manifest/package.xml
             cat ./manifest/package.xml
             test_classes=$(xmlstarlet sel -t -v "//members" -o "," ./manifest/package.xml | sed 's/,$//')
-            echo "TEST_CLASSES=$test_classes" >> $GITHUB_ENV  # Set the environment variable
             echo "Set TEST_CLASSES to: $test_classes"  # Debug output to verify
-      
-            # Write to environment file
-            echo "TEST_CLASSES=$test_classes" >> $GITHUB_ENV_PATH/env
-      
+            echo "::set-env name=TEST_CLASSES::$test_classes"
           else
-            echo "TEST_CLASSES=" >> $GITHUB_ENV  # Ensure it's empty if no classes found
             echo "No classes found, TEST_CLASSES set to empty"  # Debug output to verify
-      
-            # Write to environment file
-            echo "TEST_CLASSES=" >> $GITHUB_ENV_PATH/env
+            echo "::set-env name=TEST_CLASSES::"
           fi
-      
 
       - name: Create JWT Key File
         run: echo "${{ secrets.JWT_PRIVATE_KEY }}" > assets/server.key
@@ -74,15 +66,10 @@ jobs:
 
       - name: Debug Test Classes
         run: |
-            echo "Test classes: $TEST_CLASSES"
-        
+          echo "Test classes: $TEST_CLASSES"
 
-  validate_deployment:
-    needs: generate_and_validate
-    runs-on: ubuntu-latest
-    if: ${{ needs.generate_and_validate.outputs.test_classes != '' }}
-    steps:
       - name: Validate Deployment using Manifest
+        if: ${{ env.TEST_CLASSES != '' }}
         run: |
           echo "Validating deployment using manifest..."
-          sfdx force:source:deploy --checkonly --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ needs.generate_and_validate.outputs.test_classes }}
+          sfdx force:source:deploy --checkonly --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests $TEST_CLASSES
