@@ -73,5 +73,3 @@ jobs:
         if: steps.set_test_classes.outputs.test_classes != ''
         run: |
           sfdx force:source:deploy --checkonly --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ steps.set_test_classes.outputs.test_classes }}
-
-
