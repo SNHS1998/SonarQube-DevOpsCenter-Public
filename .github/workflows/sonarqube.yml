@@ -6,15 +6,61 @@ on:
       - 'WI-*'
 
 jobs:
-  sonarqube:
+  generate_package:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash
-
     outputs:
-      quality_gate_status: ${{ steps.quality_gate.outputs.quality_gate_status }}
+      package_xml: ${{ steps.generate_package.outputs.package_xml }}
+      test_classes: ${{ steps.generate_package.outputs.test_classes }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
 
+      - name: Install Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: '16'
+
+      - name: Install Salesforce CLI
+        run: npm install -g sfdx-cli
+
+      - name: Install xmlstarlet
+        run: sudo apt-get install -y xmlstarlet
+
+      - name: Generate Package.xml for Changed Components
+        id: generate_package
+        run: |
+          mkdir -p ./manifest
+          git diff --name-only HEAD^..HEAD > all-changed-components.txt
+          cat all-changed-components.txt
+          grep "\.cls$" all-changed-components.txt | sed 's|force-app/main/default/classes/||' > changed-components.txt
+          cat changed-components.txt
+          if [ -s changed-components.txt ]; then
+            echo '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' > ./manifest/package.xml
+            echo '<Package xmlns="http://soap.sforce.com/2006/04/metadata">' >> ./manifest/package.xml
+            echo '  <types>' >> ./manifest/package.xml
+            while read component; do
+              echo "    <members>${component%.cls}</members>" >> ./manifest/package.xml
+            done < changed-components.txt
+            echo '    <name>ApexClass</name>' >> ./manifest/package.xml
+            echo '  </types>' >> ./manifest/package.xml
+            echo '  <version>53.0</version>' >> ./manifest/package.xml
+            echo '</Package>' >> ./manifest/package.xml
+            cat ./manifest/package.xml
+            echo "::set-output name=package_xml::$(cat ./manifest/package.xml)"
+            test_classes=$(xmlstarlet sel -t -v "//members" -o "," ./manifest/package.xml | sed 's/,$//')
+            echo "::set-output name=test_classes::$test_classes"
+          else
+            echo "No Apex classes were changed."
+            echo "::set-output name=test_classes::"
+        outputs:
+          package_xml: ${{ steps.generate_package.outputs.package_xml }}
+          test_classes: ${{ steps.generate_package.outputs.test_classes }}
+
+  validate_and_deploy:
+    runs-on: ubuntu-latest
+    needs: generate_package
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
@@ -40,57 +86,50 @@ jobs:
         run: |
           sfdx auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_DEVELOPER }} --jwtkeyfile assets/server.key --username ${{ secrets.DEVELOPER_SANDBOX_USERNAME }} --setalias developer
 
-      - name: Install xmlstarlet
-        run: sudo apt-get install -y xmlstarlet
-
-      - name: Generate Package.xml for Changed Components
-        id: generate_package
+      - name: Save package.xml
         run: |
-          mkdir -p ./manifest
-          git diff --name-only HEAD^..HEAD > all-changed-components.txt
-          cat all-changed-components.txt
-          grep "\.cls$" all-changed-components.txt | sed 's|force-app/main/default/classes/||' > changed-components.txt
-          cat changed-components.txt
-          if [ -s changed-components.txt ]; then
-            echo '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' > ./manifest/package.xml
-            echo '<Package xmlns="http://soap.sforce.com/2006/04/metadata">' >> ./manifest/package.xml
-            echo '  <types>' >> ./manifest/package.xml
-            while read component; do
-              echo "    <members>${component%.cls}</members>" >> ./manifest/package.xml
-            done < changed-components.txt
-            echo '    <name>ApexClass</name>' >> ./manifest/package.xml
-            echo '  </types>' >> ./manifest/package.xml
-            echo '  <version>53.0</version>' >> ./manifest/package.xml
-            echo '</Package>' >> ./manifest/package.xml
-            cat ./manifest/package.xml
-            test_classes=$(xmlstarlet sel -t -v "//members" -o "," ./manifest/package.xml | sed 's/,$//')
-            echo "test_classes=$test_classes" >> $GITHUB_ENV
-          else
-            echo "No Apex classes were changed."
-            echo "test_classes=" >> $GITHUB_ENV
-          fi
+          echo "${{ needs.generate_package.outputs.package_xml }}" > ./manifest/package.xml
 
       - name: Validate Deployment using Manifest
-        if: env.test_classes != ''
+        if: ${{ needs.generate_package.outputs.test_classes != '' }}
         run: |
-          sfdx force:source:deploy --checkonly --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ env.test_classes }}
+          sfdx force:source:deploy --checkonly --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ needs.generate_package.outputs.test_classes }}
 
       - name: Deploy Source to Developer Org
-        if: env.test_classes != ''
+        if: ${{ needs.generate_package.outputs.test_classes != '' }}
         run: |
-          sfdx force:source:deploy --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ env.test_classes }}
+          sfdx force:source:deploy --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ needs.generate_package.outputs.test_classes }}
 
       - name: Run Apex Tests and Generate Report
-        if: env.test_classes != ''
+        if: ${{ needs.generate_package.outputs.test_classes != '' }}
         run: |
           result=$(sf apex run test --result-format json --wait 10 --target-org developer | tee result.json)
           testrunid=$(jq -r '.testRunId' result.json)
           sf apex get test --result-format json --testrunid "$testrunid" --outputdir test-results --target-org developer
 
       - name: Convert Coverage Report to XML
-        if: env.test_classes != ''
+        if: ${{ needs.generate_package.outputs.test_classes != '' }}
         run: |
           sf apex get test --codecoverage --outputdir test-results --target-org developer
+
+  sonarqube_quality_gate:
+    runs-on: ubuntu-latest
+    needs: validate_and_deploy
+    outputs:
+      quality_gate_status: ${{ steps.quality_gate.outputs.quality_gate_status }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Install Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: '16'
+
+      - name: Install Salesforce CLI
+        run: npm install -g sfdx-cli
 
       - name: SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@v2.1.0
@@ -124,14 +163,13 @@ jobs:
           else
             echo "New code coverage is sufficient. Proceeding with the build."
             echo "SONARQUBE_QUALITY_GATE=passed" >> $GITHUB_ENV
-          fi
         outputs:
           quality_gate_status: ${{ env.SONARQUBE_QUALITY_GATE }}
 
-  quality_gate:
+  fail_build:
     runs-on: ubuntu-latest
-    needs: sonarqube
-    if: needs.sonarqube.outputs.quality_gate_status == 'failed'
+    needs: sonarqube_quality_gate
+    if: needs.sonarqube_quality_gate.outputs.quality_gate_status == 'failed'
     steps:
       - name: Fail the build
         run: exit 1
