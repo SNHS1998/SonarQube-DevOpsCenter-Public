@@ -46,6 +46,7 @@ jobs:
             echo "test_classes=$test_classes" >> $GITHUB_ENV
           else
             echo "test_classes=" >> $GITHUB_ENV
+          fi
 
       - name: Create JWT Key File
         run: echo "${{ secrets.JWT_PRIVATE_KEY }}" > assets/server.key
@@ -115,7 +116,7 @@ jobs:
             -Dsonar.apex.coverage.reportPaths=test-results/apex-codecoverage.xml
 
       - name: Check SonarQube Quality Gate
-        id: check_quality_gate
+        id: quality_gate
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
