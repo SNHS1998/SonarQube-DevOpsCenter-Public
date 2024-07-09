@@ -65,27 +65,29 @@ jobs:
           else
             echo "No Apex classes were changed."
             echo "test_classes=" >> $GITHUB_ENV
-          fi
+
+      - name: Debug Test Classes
+        run: echo "Test classes: ${{ env.test_classes }}"
 
       - name: Validate Deployment using Manifest
-        if: env.test_classes != ''
+        if: ${{ env.test_classes }} != ''
         run: |
           sfdx force:source:deploy --checkonly --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ env.test_classes }}
 
       - name: Deploy Source to Developer Org
-        if: env.test_classes != ''
+        if: ${{ env.test_classes }} != ''
         run: |
           sfdx force:source:deploy --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ env.test_classes }}
 
       - name: Run Apex Tests and Generate Report
-        if: env.test_classes != ''
+        if: ${{ env.test_classes }} != ''
         run: |
           result=$(sf apex run test --result-format json --wait 10 --target-org developer | tee result.json)
           testrunid=$(jq -r '.testRunId' result.json)
           sf apex get test --result-format json --testrunid "$testrunid" --outputdir test-results --target-org developer
 
       - name: Convert Coverage Report to XML
-        if: env.test_classes != ''
+        if: ${{ env.test_classes }} != ''
         run: |
           sf apex get test --codecoverage --outputdir test-results --target-org developer
 
