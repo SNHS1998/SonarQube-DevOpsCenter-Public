@@ -63,7 +63,8 @@ jobs:
           sfdx auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_DEVELOPER }} --jwtkeyfile assets/server.key --username ${{ secrets.DEVELOPER_SANDBOX_USERNAME }} --setalias developer
 
       - name: Debug Test Classes
-        run: echo "Test classes: ${{ steps.generate_package.outputs.test_classes }}"
+        run: |
+          echo "Test classes: ${{ needs.generate_and_validate.outputs.test_classes }}"
 
   validate_deployment:
     runs-on: ubuntu-latest
