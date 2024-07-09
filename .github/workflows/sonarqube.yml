@@ -43,13 +43,16 @@ jobs:
       - name: Run Salesforce CLI to Fetch Test Classes
         id: fetch_test_classes
         run: |
-          # Example command to fetch test classes, adjust as per your structure
           test_classes=$(grep -oP '(?<=force-app/main/default/classes/).*(?=.cls)' changed-components.txt | paste -sd "," -)
           echo "DEBUG: Test classes found: $test_classes"
-          echo "::set-output name=test_classes::$test_classes"
+          if [ -n "$test_classes" ]; then
+            echo "::set-env name=TEST_CLASSES::$test_classes"
+          else
+            echo "No test classes found."
+          fi
 
       - name: Validate Deployment using Test Classes
-        if: ${{ steps.fetch_test_classes.outputs.test_classes != '' }}
+        if: env.TEST_CLASSES != ''
         run: |
           echo "Validating deployment using specified test classes..."
-          sfdx force:source:deploy --checkonly --sourcepath force-app/main/default --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ steps.fetch_test_classes.outputs.test_classes }}
+          sfdx force:source:deploy --checkonly --sourcepath force-app/main/default --targetusername developer --testlevel RunSpecifiedTests --runtests $TEST_CLASSES
