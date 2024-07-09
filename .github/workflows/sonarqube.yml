@@ -126,5 +126,5 @@ jobs:
           fi
 
       - name: Fail build on Quality Gate status
-        if: steps.quality_gate.outcome != 'success'
+        if: ${{ steps.quality_gate.conclusion }} != 'success'
         run: exit 1
