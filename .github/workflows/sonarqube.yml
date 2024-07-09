@@ -8,8 +8,6 @@ on:
 jobs:
   generate_and_validate:
     runs-on: ubuntu-latest
-    outputs:
-      test_classes: ${{ steps.set_test_classes.outputs.test_classes }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
@@ -46,30 +44,20 @@ jobs:
             echo '</Package>' >> ./manifest/package.xml
             cat ./manifest/package.xml
             test_classes=$(xmlstarlet sel -t -v "//members" -o "," ./manifest/package.xml | sed 's/,$//')
-            echo "::set-output name=test_classes::$test_classes"
-            echo "test_classes=${test_classes}" >> $GITHUB_ENV
+            echo "TEST_CLASSES=${test_classes}" >> $GITHUB_ENV
           else
-            echo "::set-output name=test_classes::"
-            echo "test_classes=" >> $GITHUB_ENV
-
-      - name: Set test classes output
-        id: set_test_classes
-        run: echo "test_classes=${{ steps.generate_package.outputs.test_classes }}" >> $GITHUB_ENV
-        env:
-          test_classes: ${{ steps.generate_package.outputs.test_classes }}
+            echo "TEST_CLASSES=" >> $GITHUB_ENV
 
       - name: Create JWT Key File
         run: echo "${{ secrets.JWT_PRIVATE_KEY }}" > assets/server.key
 
-      - name: Authorize Dev Hub (Production)
-        run: |
-          sfdx auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_PROD }} --jwtkeyfile assets/server.key --username ${{ secrets.SALESFORCE_PROD_USERNAME }} --setdefaultdevhubusername --setalias prod
+      
 
       - name: Authorize Developer Org
         run: |
           sfdx auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_DEVELOPER }} --jwtkeyfile assets/server.key --username ${{ secrets.DEVELOPER_SANDBOX_USERNAME }} --setalias developer
 
       - name: Validate Deployment using Manifest
-        if: ${{ env.test_classes != '' }}
+        if: env.TEST_CLASSES != ''
         run: |
-          sfdx force:source:deploy --checkonly --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ env.test_classes }}
+          sfdx force:source:deploy --checkonly --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ env.TEST_CLASSES }}
