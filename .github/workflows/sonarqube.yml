@@ -101,7 +101,7 @@ jobs:
           SONAR_ORGANIZATION: ${{ secrets.SONAR_ORGANIZATION }}
         with:
           args: >
-            -Dsonar.projectKey=YourProjectKey
+            -Dsonar.projectKey=SNHS1998_SonarQube-DevOpsCenter-Public
             -Dsonar.apex.coverage.reportPaths=test-results/apex-codecoverage.xml
 
       - name: Check SonarQube Quality Gate
@@ -110,7 +110,7 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         run: |
-          status=$(curl -s "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=YourProjectKey" -u "${SONAR_TOKEN}:")
+          status=$(curl -s "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=SNHS1998_SonarQube-DevOpsCenter-Public" -u "${SONAR_TOKEN}:")
           coverage=$(echo "$status" | jq -r '.projectStatus.conditions[] | select(.metricKey == "new_coverage") | .actualValue')
 
           echo "Current New Code Coverage: $coverage%"
