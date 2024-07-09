@@ -6,7 +6,7 @@ on:
       - 'WI-*'
 
 jobs:
-  generate_package:
+  generate_and_validate:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -30,9 +30,7 @@ jobs:
         run: |
           mkdir -p ./manifest
           git diff --name-only HEAD^..HEAD > all-changed-components.txt
-          cat all-changed-components.txt
           grep "\.cls$" all-changed-components.txt | sed 's|force-app/main/default/classes/||' > changed-components.txt
-          cat changed-components.txt
           if [ -s changed-components.txt ]; then
             echo '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' > ./manifest/package.xml
             echo '<Package xmlns="http://soap.sforce.com/2006/04/metadata">' >> ./manifest/package.xml
@@ -44,33 +42,10 @@ jobs:
             echo '  </types>' >> ./manifest/package.xml
             echo '  <version>53.0</version>' >> ./manifest/package.xml
             echo '</Package>' >> ./manifest/package.xml
-            cat ./manifest/package.xml
-            echo "::set-output name=package_xml::$(cat ./manifest/package.xml)"
             test_classes=$(xmlstarlet sel -t -v "//members" -o "," ./manifest/package.xml | sed 's/,$//')
-            echo "::set-output name=test_classes::$test_classes"
+            echo "test_classes=$test_classes" >> $GITHUB_ENV
           else
-            echo "No Apex classes were changed."
-            echo "::set-output name=test_classes::"
-      outputs:
-        package_xml: ${{ steps.generate_package.outputs.package_xml }}
-        test_classes: ${{ steps.generate_package.outputs.test_classes }}
-
-  validate_and_deploy:
-    runs-on: ubuntu-latest
-    needs: generate_package
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v2
-        with:
-          fetch-depth: 0
-
-      - name: Install Node.js
-        uses: actions/setup-node@v2
-        with:
-          node-version: '16'
-
-      - name: Install Salesforce CLI
-        run: npm install -g sfdx-cli
+            echo "test_classes=" >> $GITHUB_ENV
 
       - name: Create JWT Key File
         run: echo "${{ secrets.JWT_PRIVATE_KEY }}" > assets/server.key
@@ -83,48 +58,49 @@ jobs:
         run: |
           sfdx auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_DEVELOPER }} --jwtkeyfile assets/server.key --username ${{ secrets.DEVELOPER_SANDBOX_USERNAME }} --setalias developer
 
-      - name: Save package.xml
-        run: |
-          echo "${{ needs.generate_package.outputs.package_xml }}" > ./manifest/package.xml
-
       - name: Validate Deployment using Manifest
-        if: ${{ needs.generate_package.outputs.test_classes != '' }}
+        if: env.test_classes != ''
         run: |
-          sfdx force:source:deploy --checkonly --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ needs.generate_package.outputs.test_classes }}
+          sfdx force:source:deploy --checkonly --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ env.test_classes }}
 
       - name: Deploy Source to Developer Org
-        if: ${{ needs.generate_package.outputs.test_classes != '' }}
+        if: env.test_classes != ''
         run: |
-          sfdx force:source:deploy --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ needs.generate_package.outputs.test_classes }}
+          sfdx force:source:deploy --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ env.test_classes }}
 
       - name: Run Apex Tests and Generate Report
-        if: ${{ needs.generate_package.outputs.test_classes != '' }}
+        if: env.test_classes != ''
         run: |
           result=$(sf apex run test --result-format json --wait 10 --target-org developer | tee result.json)
           testrunid=$(jq -r '.testRunId' result.json)
           sf apex get test --result-format json --testrunid "$testrunid" --outputdir test-results --target-org developer
 
       - name: Convert Coverage Report to XML
-        if: ${{ needs.generate_package.outputs.test_classes != '' }}
+        if: env.test_classes != ''
         run: |
           sf apex get test --codecoverage --outputdir test-results --target-org developer
 
-  sonarqube_quality_gate:
+      - name: Upload Coverage Report
+        if: env.test_classes != ''
+        uses: actions/upload-artifact@v2
+        with:
+          name: apex-codecoverage
+          path: test-results/
+
+  sonarqube:
     runs-on: ubuntu-latest
-    needs: validate_and_deploy
+    needs: generate_and_validate
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
         with:
           fetch-depth: 0
 
-      - name: Install Node.js
-        uses: actions/setup-node@v2
+      - name: Download Coverage Report
+        uses: actions/download-artifact@v2
         with:
-          node-version: '16'
-
-      - name: Install Salesforce CLI
-        run: npm install -g sfdx-cli
+          name: apex-codecoverage
+          path: test-results/
 
       - name: SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@v2.1.0
@@ -139,32 +115,15 @@ jobs:
             -Dsonar.apex.coverage.reportPaths=test-results/apex-codecoverage.xml
 
       - name: Check SonarQube Quality Gate
-        id: quality_gate
+        id: check_quality_gate
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         run: |
           status=$(curl -s "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=SNHS1998_SonarQube-DevOpsCenter-Public" -u "${SONAR_TOKEN}:")
-          coverage=$(echo "$status" | jq -r '.projectStatus.conditions[] | select(.metricKey == "new_coverage") | .actualValue')
+          quality_gate=$(echo "$status" | jq -r '.projectStatus.status')
+          echo "quality_gate_status=$quality_gate" >> $GITHUB_ENV
 
-          echo "Current New Code Coverage: $coverage%"
-
-          if [ "$coverage" == "null" ]; then
-            echo "New code coverage information is not available."
-            echo "SONARQUBE_QUALITY_GATE=failed" >> $GITHUB_ENV
-          elif (( $(echo "$coverage < 80" | bc -l) )); then
-            echo "New code coverage is less than 80%. Failing the build."
-            echo "SONARQUBE_QUALITY_GATE=failed" >> $GITHUB_ENV
-          else
-            echo "New code coverage is sufficient. Proceeding with the build."
-            echo "SONARQUBE_QUALITY_GATE=passed" >> $GITHUB_ENV
-        outputs:
-          quality_gate_status: ${{ env.SONARQUBE_QUALITY_GATE }}
-
-  fail_build:
-    runs-on: ubuntu-latest
-    needs: sonarqube_quality_gate
-    if: needs.sonarqube_quality_gate.outputs.quality_gate_status == 'failed'
-    steps:
-      - name: Fail the build
+      - name: Fail the build if Quality Gate fails
+        if: env.quality_gate_status != 'OK'
         run: exit 1
