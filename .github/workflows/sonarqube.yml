@@ -12,6 +12,9 @@ jobs:
       run:
         shell: bash
 
+    outputs:
+      quality_gate_status: ${{ steps.quality_gate.outputs.quality_gate_status }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
