@@ -57,7 +57,7 @@ jobs:
             done < changed-components.txt
             echo '    <name>ApexClass</name>' >> ./manifest/package.xml
             echo '  </types>' >> ./manifest/package.xml
-            echo '  <version>53.0</version>' >> ./manifest/package.xml
+            echo '  <version>53.0' >> ./manifest/package.xml
             echo '</Package>' >> ./manifest/package.xml
             cat ./manifest/package.xml
             test_classes=$(xmlstarlet sel -t -v "//members" -o "," ./manifest/package.xml | sed 's/,$//')
@@ -117,14 +117,15 @@ jobs:
 
           if [ "$coverage" == "null" ]; then
             echo "New code coverage information is not available."
-            exit 1
+            echo "SONARQUBE_QUALITY_GATE=failed" >> $GITHUB_ENV
           elif (( $(echo "$coverage < 80" | bc -l) )); then
             echo "New code coverage is less than 80%. Failing the build."
-            exit 1
+            echo "SONARQUBE_QUALITY_GATE=failed" >> $GITHUB_ENV
           else
             echo "New code coverage is sufficient. Proceeding with the build."
+            echo "SONARQUBE_QUALITY_GATE=passed" >> $GITHUB_ENV
           fi
 
       - name: Fail build on Quality Gate status
-        if: ${{ steps.quality_gate.conclusion }} != 'success'
+        if: env.SONARQUBE_QUALITY_GATE == 'failed'
         run: exit 1
