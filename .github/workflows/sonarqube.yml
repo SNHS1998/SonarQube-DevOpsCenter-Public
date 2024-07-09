@@ -54,7 +54,7 @@ jobs:
       - name: Set test classes output
         id: set_test_classes
         run: echo "test_classes=${{ steps.generate_package.outputs.test_classes }}" >> $GITHUB_ENV
-        outputs:
+        env:
           test_classes: ${{ steps.generate_package.outputs.test_classes }}
 
       - name: Create JWT Key File
@@ -69,6 +69,6 @@ jobs:
           sfdx auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_DEVELOPER }} --jwtkeyfile assets/server.key --username ${{ secrets.DEVELOPER_SANDBOX_USERNAME }} --setalias developer
 
       - name: Validate Deployment using Manifest
-        if: steps.set_test_classes.outputs.test_classes != ''
+        if: env.test_classes != ''
         run: |
-          sfdx force:source:deploy --checkonly --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ steps.set_test_classes.outputs.test_classes }}
+          sfdx force:source:deploy --checkonly --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ env.test_classes }}
