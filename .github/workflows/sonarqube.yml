@@ -46,12 +46,20 @@ jobs:
             echo '</Package>' >> ./manifest/package.xml
             cat ./manifest/package.xml
             test_classes=$(xmlstarlet sel -t -v "//members" -o "," ./manifest/package.xml | sed 's/,$//')
-            echo "::set-output name=test_classes::$test_classes"
-            echo "TEST_CLASSES=${test_classes}" >> $GITHUB_ENV
+            echo "TEST_CLASSES=$test_classes" >> $GITHUB_ENV  # Set the environment variable
+            echo "Set TEST_CLASSES to: $test_classes"  # Debug output to verify
+      
+            # Write to environment file
+            echo "TEST_CLASSES=$test_classes" >> $GITHUB_ENV_PATH/env
+      
           else
-            echo "::set-output name=test_classes::"
-            echo "TEST_CLASSES=" >> $GITHUB_ENV
+            echo "TEST_CLASSES=" >> $GITHUB_ENV  # Ensure it's empty if no classes found
+            echo "No classes found, TEST_CLASSES set to empty"  # Debug output to verify
+      
+            # Write to environment file
+            echo "TEST_CLASSES=" >> $GITHUB_ENV_PATH/env
           fi
+      
 
       - name: Create JWT Key File
         run: echo "${{ secrets.JWT_PRIVATE_KEY }}" > assets/server.key
@@ -66,7 +74,8 @@ jobs:
 
       - name: Debug Test Classes
         run: |
-          echo "Test classes: ${{ needs.generate_and_validate.outputs.test_classes }}"
+            echo "Test classes: $TEST_CLASSES"
+        
 
   validate_deployment:
     needs: generate_and_validate
