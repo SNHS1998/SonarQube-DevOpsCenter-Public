@@ -37,6 +37,9 @@ jobs:
         run: |
           sfdx auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_DEVELOPER }} --jwtkeyfile assets/server.key --username ${{ secrets.DEVELOPER_SANDBOX_USERNAME }} --setalias developer
 
+      - name: Install xmlstarlet
+        run: sudo apt-get install -y xmlstarlet
+
       - name: Generate Package.xml for Changed Components
         id: generate_package
         run: |
@@ -63,9 +66,6 @@ jobs:
             echo "No Apex classes were changed."
             echo "test_classes=" >> $GITHUB_ENV
           fi
-
-      - name: Install xmlstarlet
-        run: sudo apt-get install -y xmlstarlet
 
       - name: Validate Deployment using Manifest
         if: env.test_classes != ''
