@@ -37,11 +37,13 @@ jobs:
         run: |
           sfdx auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_DEVELOPER }} --jwtkeyfile assets/server.key --username ${{ secrets.DEVELOPER_SANDBOX_USERNAME }} --setalias developer
 
-      - name: Generate Package.xml
+      - name: Generate Package.xml for Changed Components
         run: |
           mkdir -p ./manifest
           git diff --name-only HEAD^..HEAD > all-changed-components.txt
+          cat all-changed-components.txt
           grep "\.cls$" all-changed-components.txt | sed 's|force-app/main/default/classes/||' > changed-components.txt
+          cat changed-components.txt
           if [ -s changed-components.txt ]; then
             echo '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' > ./manifest/package.xml
             echo '<Package xmlns="http://soap.sforce.com/2006/04/metadata">' >> ./manifest/package.xml
@@ -59,15 +61,36 @@ jobs:
             exit 0
           fi
 
-      - name: Run Apex Tests and Generate Report
+      - name: Install xmlstarlet
+        run: sudo apt-get install -y xmlstarlet
+
+      - name: Extract Test Class Names from Package.xml
+        id: extract_tests
         run: |
-          result=$(sfdx force:apex:test:run --resultformat json --wait 10 --target-org developer | tee result.json)
+          test_classes=$(xmlstarlet sel -t -v "//members" -o "," ./manifest/package.xml | sed 's/,$//')
+          echo "::set-output name=test_classes::$test_classes"
+
+      - name: Validate Deployment using Manifest
+        if: steps.extract_tests.outputs.test_classes != ''
+        run: |
+          sfdx force:source:deploy --checkonly --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ steps.extract_tests.outputs.test_classes }}
+
+      - name: Deploy Source to Developer Org
+        if: steps.extract_tests.outputs.test_classes != ''
+        run: |
+          sfdx force:source:deploy --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ steps.extract_tests.outputs.test_classes }}
+
+      - name: Run Apex Tests and Generate Report
+        if: steps.extract_tests.outputs.test_classes != ''
+        run: |
+          result=$(sf apex run test --result-format json --wait 10 --target-org developer | tee result.json)
           testrunid=$(jq -r '.result.testRunId' result.json)
-          sfdx force:apex:test:report --resultformat json --testrunid "$testrunid" --outputdir test-results --target-org developer
+          sf apex get test --result-format json --testrunid "$testrunid" --outputdir test-results --target-org developer
 
       - name: Convert Coverage Report to XML
+        if: steps.extract_tests.outputs.test_classes != ''
         run: |
-          sfdx force:apex:test:report --codecoverage --outputdir test-results --target-org developer
+          sf apex get test --codecoverage --outputdir test-results --target-org developer
 
       - name: SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@v2.1.0
@@ -101,18 +124,6 @@ jobs:
           else
             echo "New code coverage is sufficient. Proceeding with the build."
           fi
-
-      - name: Extract Test Classes from Package.xml
-        id: extract_tests
-        run: |
-          test_classes=$(xmllint --xpath "//members/text()" ./manifest/package.xml | tr '\n' ',')
-          test_classes=${test_classes%,}
-          echo "::set-output name=test_classes::$test_classes"
-
-      - name: Deploy Source to Developer Org (Check Only)
-        if: steps.extract_tests.outputs.test_classes != ''
-        run: |
-          sfdx force:source:deploy --checkonly --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ steps.extract_tests.outputs.test_classes }}
 
       - name: Fail build on Quality Gate status
         if: steps.quality_gate.outcome != 'success'
