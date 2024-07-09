@@ -38,6 +38,7 @@ jobs:
           sfdx auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_DEVELOPER }} --jwtkeyfile assets/server.key --username ${{ secrets.DEVELOPER_SANDBOX_USERNAME }} --setalias developer
 
       - name: Generate Package.xml for Changed Components
+        id: generate_package
         run: |
           mkdir -p ./manifest
           git diff --name-only HEAD^..HEAD > all-changed-components.txt
@@ -58,8 +59,12 @@ jobs:
             cat ./manifest/package.xml
           else
             echo "No Apex classes were changed."
-            exit 0
           fi
+
+      - name: Skip if no Apex classes changed
+        if: steps.generate_package.outputs.changed == 'false'
+        run: echo "No Apex classes changed. Skipping deployment and tests."
+        continue-on-error: true
 
       - name: Install xmlstarlet
         run: sudo apt-get install -y xmlstarlet
@@ -84,7 +89,7 @@ jobs:
         if: steps.extract_tests.outputs.test_classes != ''
         run: |
           result=$(sf apex run test --result-format json --wait 10 --target-org developer | tee result.json)
-          testrunid=$(jq -r '.result.testRunId' result.json)
+          testrunid=$(jq -r '.testRunId' result.json)
           sf apex get test --result-format json --testrunid "$testrunid" --outputdir test-results --target-org developer
 
       - name: Convert Coverage Report to XML
