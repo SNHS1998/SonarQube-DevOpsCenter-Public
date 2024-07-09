@@ -8,8 +8,6 @@ on:
 jobs:
   generate_and_validate:
     runs-on: ubuntu-latest
-    env:
-      TEST_CLASSES: ''
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
@@ -24,38 +22,6 @@ jobs:
       - name: Install Salesforce CLI
         run: npm install -g sfdx-cli
 
-      - name: Install xmlstarlet
-        run: sudo apt-get install -y xmlstarlet
-
-      - name: Generate Package.xml for Changed Components
-        id: generate_package
-        run: |
-          mkdir -p ./manifest
-          git diff --name-only HEAD^..HEAD > all-changed-components.txt
-          grep "\.cls$" all-changed-components.txt | sed 's|force-app/main/default/classes/||' > changed-components.txt
-          if [ -s changed-components.txt ]; then
-            echo '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' > ./manifest/package.xml
-            echo '<Package xmlns="http://soap.sforce.com/2006/04/metadata">' >> ./manifest/package.xml
-            echo '  <types>' >> ./manifest/package.xml
-            while read component; do
-              echo "    <members>${component%.cls}</members>" >> ./manifest/package.xml
-            done < changed-components.txt
-            echo '    <name>ApexClass</name>' >> ./manifest/package.xml
-            echo '  </types>' >> ./manifest/package.xml
-            echo '  <version>53.0</version>' >> ./manifest/package.xml
-            echo '</Package>' >> ./manifest/package.xml
-            cat ./manifest/package.xml
-            test_classes=$(xmlstarlet sel -t -v "//members" -o "," ./manifest/package.xml | sed 's/,$//')
-            echo "DEBUG: Test classes found: $test_classes"  # Debug output to verify
-            echo "TEST_CLASSES=$test_classes" >> $GITHUB_ENV  # Set the environment variable
-            echo "Set TEST_CLASSES to: $test_classes"  # Additional debug output to confirm
-          else
-            echo "DEBUG: No Apex classes found."  # Debug output if no classes found
-            echo "TEST_CLASSES=" >> $GITHUB_ENV  # Ensure it's empty if no classes found
-            echo "No classes found, TEST_CLASSES set to empty"  # Additional debug output to confirm
-          fi
-        shell: /usr/bin/bash -e {0}
-
       - name: Create JWT Key File
         run: echo "${{ secrets.JWT_PRIVATE_KEY }}" > assets/server.key
 
@@ -67,12 +33,23 @@ jobs:
         run: |
           sfdx auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_DEVELOPER }} --jwtkeyfile assets/server.key --username ${{ secrets.DEVELOPER_SANDBOX_USERNAME }} --setalias developer
 
-      - name: Debug Test Classes
+      - name: Retrieve Changed Components
+        id: retrieve_changes
         run: |
-          echo "Test classes: $TEST_CLASSES"
+          mkdir -p ./manifest
+          git diff --name-only HEAD^..HEAD > all-changed-components.txt
+          grep "\.cls$" all-changed-components.txt | sed 's|force-app/main/default/classes/||' > changed-components.txt
 
-      - name: Validate Deployment using Manifest
-        if: ${{ env.TEST_CLASSES != '' }}
+      - name: Run Salesforce CLI to Fetch Test Classes
+        id: fetch_test_classes
         run: |
-          echo "Validating deployment using manifest..."
-          sfdx force:source:deploy --checkonly --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests $TEST_CLASSES
+          # Example command to fetch test classes, adjust as per your structure
+          test_classes=$(grep -oP '(?<=force-app/main/default/classes/).*(?=.cls)' changed-components.txt | paste -sd "," -)
+          echo "DEBUG: Test classes found: $test_classes"
+          echo "::set-output name=test_classes::$test_classes"
+
+      - name: Validate Deployment using Test Classes
+        if: ${{ steps.fetch_test_classes.outputs.test_classes != '' }}
+        run: |
+          echo "Validating deployment using specified test classes..."
+          sfdx force:source:deploy --checkonly --sourcepath force-app/main/default --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ steps.fetch_test_classes.outputs.test_classes }}
