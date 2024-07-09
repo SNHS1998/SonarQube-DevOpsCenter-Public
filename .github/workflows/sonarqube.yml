@@ -68,29 +68,29 @@ jobs:
           sfdx auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_DEVELOPER }} --jwtkeyfile assets/server.key --username ${{ secrets.DEVELOPER_SANDBOX_USERNAME }} --setalias developer
 
       - name: Validate Deployment using Manifest
-        if: env.test_classes != ''
+        if: ${{ env.test_classes }} != ''
         run: |
           sfdx force:source:deploy --checkonly --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ env.test_classes }}
 
       - name: Deploy Source to Developer Org
-        if: env.test_classes != ''
+        if: ${{ env.test_classes }} != ''
         run: |
           sfdx force:source:deploy --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ env.test_classes }}
 
       - name: Run Apex Tests and Generate Report
-        if: env.test_classes != ''
+        if: ${{ env.test_classes }} != ''
         run: |
           result=$(sf apex run test --result-format json --wait 10 --target-org developer | tee result.json)
           testrunid=$(jq -r '.testRunId' result.json)
           sf apex get test --result-format json --testrunid "$testrunid" --outputdir test-results --target-org developer
 
       - name: Convert Coverage Report to XML
-        if: env.test_classes != ''
+        if: ${{ env.test_classes }} != ''
         run: |
           sf apex get test --codecoverage --outputdir test-results --target-org developer
 
       - name: Upload Coverage Report
-        if: env.test_classes != ''
+        if: ${{ env.test_classes }} != ''
         uses: actions/upload-artifact@v2
         with:
           name: apex-codecoverage
@@ -134,5 +134,5 @@ jobs:
           echo "quality_gate_status=$quality_gate" >> $GITHUB_ENV
 
       - name: Fail the build if Quality Gate fails
-        if: env.quality_gate_status != 'OK'
+        if: ${{ env.quality_gate_status }} != 'OK'
         run: exit 1
