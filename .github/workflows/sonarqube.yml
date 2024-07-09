@@ -78,7 +78,7 @@ jobs:
         run: npm install -g sfdx-cli
 
       - name: Validate Deployment using Manifest
-        if: ${{ needs.generate_and_validate.outputs.test_classes }}
+        if: ${{ needs.generate_and_validate.outputs.test_classes != '' }}
         run: |
           echo "Validating deployment using manifest..."
           sfdx force:source:deploy --checkonly --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ needs.generate_and_validate.outputs.test_classes }}
