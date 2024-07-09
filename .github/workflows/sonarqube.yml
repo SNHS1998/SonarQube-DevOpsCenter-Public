@@ -54,7 +54,7 @@ jobs:
       - name: Set test classes output
         id: set_test_classes
         run: echo "test_classes=${{ steps.generate_package.outputs.test_classes }}" >> $GITHUB_ENV
-        outputs:
+        env:
           test_classes: ${{ steps.generate_package.outputs.test_classes }}
 
       - name: Create JWT Key File
