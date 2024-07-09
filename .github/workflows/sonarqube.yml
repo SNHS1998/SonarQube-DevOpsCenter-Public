@@ -34,7 +34,7 @@ jobs:
           git diff --name-only HEAD^..HEAD > all-changed-components.txt
           grep "\.cls$" all-changed-components.txt | sed 's|force-app/main/default/classes/||' > changed-components.txt
           cat changed-components.txt  # Debug output: Check content of changed-components.txt
-      
+          
           if [ -s changed-components.txt ]; then
             echo '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' > ./manifest/package.xml
             echo '<Package xmlns="http://soap.sforce.com/2006/04/metadata">' >> ./manifest/package.xml
@@ -47,8 +47,13 @@ jobs:
             echo '  <version>53.0</version>' >> ./manifest/package.xml
             echo '</Package>' >> ./manifest/package.xml
             cat ./manifest/package.xml  # Debug output: Check content of package.xml
-      
-            test_classes=$(xmlstarlet sel -t -v "//members" -o "," ./manifest/package.xml | sed 's/,$//')
+            
+            # Debug: Check if xmlstarlet command outputs expected result
+            xmlstarlet sel -t -m "//members" -v "." -n ./manifest/package.xml | paste -sd "," -
+            
+            # Concatenate members into comma-separated list
+            test_classes=$(xmlstarlet sel -t -m "//members" -v "." -n ./manifest/package.xml | paste -sd "," -)
+            
             echo "DEBUG: Test classes found: $test_classes"  # Debug output to verify
             echo "TEST_CLASSES=$test_classes" >> $GITHUB_ENV  # Set the environment variable
             echo "Set TEST_CLASSES to: $test_classes"  # Additional debug output to confirm
@@ -58,6 +63,7 @@ jobs:
             echo "No classes found, TEST_CLASSES set to empty"  # Additional debug output to confirm
           fi
         shell: /usr/bin/bash -e {0}
+      
       
       
 
