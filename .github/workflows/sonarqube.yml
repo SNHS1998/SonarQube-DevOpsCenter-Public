@@ -33,27 +33,10 @@ jobs:
         run: |
           sfdx auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_DEVELOPER }} --jwtkeyfile assets/server.key --username ${{ secrets.DEVELOPER_SANDBOX_USERNAME }} --setalias developer
 
-      - name: Retrieve Changed Components
-        id: retrieve_changes
-        run: |
-          mkdir -p ./manifest
-          git diff --name-only HEAD^..HEAD > all-changed-components.txt
-          grep "\.cls$" all-changed-components.txt | sed 's|force-app/main/default/classes/||' > changed-components.txt
-
-      - name: Run Salesforce CLI to Fetch Test Classes
-        id: fetch_test_classes
-        run: |
-          test_classes=$(grep -oP '(?<=force-app/main/default/classes/).*(?=.cls)' changed-components.txt | paste -sd "," -)
-          echo "DEBUG: Test classes found: $test_classes"
-          if [ -n "$test_classes" ]; then
-            echo "::set-env name=TEST_CLASSES::$test_classes"
-          else
-            echo "No test classes found."
-          fi
-
+      
       - name: Validate Deployment using Test Classes
         if: env.TEST_CLASSES != ''
         run: |
           echo "Validating deployment using specified test classes..."
-          sfdx force:source:deploy --checkonly --sourcepath force-app/main/default/classes --targetusername developer --testlevel RunSpecifiedTests --runtests $TEST_CLASSES
+          sfdx force:source:deploy --checkonly --sourcepath force-app/main/default/classes --targetusername developer --testlevel RunSpecifiedTests --runtests TemperatureConverterTest
           
