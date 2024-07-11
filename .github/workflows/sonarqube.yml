@@ -55,4 +55,5 @@ jobs:
         if: env.TEST_CLASSES != ''
         run: |
           echo "Validating deployment using specified test classes..."
-          sfdx force:source:deploy --checkonly --sourcepath force-app/main/default --targetusername developer --testlevel RunSpecifiedTests --runtests $TEST_CLASSES
+          sfdx force:source:deploy --checkonly --sourcepath force-app/main/default/classes --targetusername developer --testlevel RunSpecifiedTests --runtests $TEST_CLASSES
+          
