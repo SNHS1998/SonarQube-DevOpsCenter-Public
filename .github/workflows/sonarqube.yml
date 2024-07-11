@@ -39,5 +39,7 @@ jobs:
         run: |
           echo "Validating deployment using specified test classes..."
           
-          sfdx force:source:deploy -p force-app/main/default --testlevel RunSpecifiedTests --runtests TemperatureConverterTest --checkonly
+          
+          sfdx force:source:deploy -p force-app/main/default --testlevel RunSpecifiedTests --runtests TemperatureConverterTest --checkonly -u developer
+
 
