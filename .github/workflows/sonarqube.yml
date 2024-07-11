@@ -29,21 +29,66 @@ jobs:
       - name: Create JWT Key File
         run: echo "${{ secrets.JWT_PRIVATE_KEY }}" > assets/server.key
 
-      - name: Generate package.xml
+      - name: Authorize Dev Hub (Production)
         run: |
-          sfdx force:source:manifest:create --outputdir ./manifest --manifestname package.xml
-          cat ./manifest/package.xml  # Display the generated package.xml for verification
-      - name: Validate Deployment
+          sfdx auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_PROD }} --jwtkeyfile assets/server.key --username ${{ secrets.SALESFORCE_PROD_USERNAME }} --setdefaultdevhubusername --setalias prod
+      - name: Authorize Developer Org
         run: |
-          sfdx force:source:deploy --checkonly --manifest ./manifest/package.xml --targetusername developer
+          sfdx auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_DEVELOPER }} --jwtkeyfile assets/server.key --username ${{ secrets.DEVELOPER_SANDBOX_USERNAME }} --setalias developer
+      - name: Generate Package.xml for Changed Components
+        id: generate_package
+        run: |
+          mkdir -p ./manifest
+          git diff --name-only HEAD^..HEAD > all-changed-components.txt
+          cat all-changed-components.txt
+          grep "\.cls$" all-changed-components.txt | sed 's|force-app/main/default/classes/||' > changed-components.txt
+          cat changed-components.txt
+          if [ -s changed-components.txt ]; then
+            echo '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' > ./manifest/package.xml
+            echo '<Package xmlns="http://soap.sforce.com/2006/04/metadata">' >> ./manifest/package.xml
+            echo '  <types>' >> ./manifest/package.xml
+            while read component; do
+              echo "    <members>${component%.cls}</members>" >> ./manifest/package.xml
+            done < changed-components.txt
+            echo '    <name>ApexClass</name>' >> ./manifest/package.xml
+            echo '  </types>' >> ./manifest/package.xml
+            echo '  <version>53.0</version>' >> ./manifest/package.xml
+            echo '</Package>' >> ./manifest/package.xml
+            cat ./manifest/package.xml
+          else
+            echo "No Apex classes were changed."
+          fi
+      - name: Skip if no Apex classes changed
+        if: steps.generate_package.outputs.changed == 'false'
+        run: echo "No Apex classes changed. Skipping deployment and tests."
+        continue-on-error: true
+
+      - name: Install xmlstarlet
+        run: sudo apt-get install -y xmlstarlet
+
+      - name: Extract Test Class Names from Package.xml
+        id: extract_tests
+        run: |
+          test_classes=$(xmlstarlet sel -t -v "//members" -o "," ./manifest/package.xml | sed 's/,$//')
+          echo "::set-output name=test_classes::$test_classes"
+      - name: Validate Deployment using Manifest
+        if: steps.extract_tests.outputs.test_classes != ''
+        run: |
+          sfdx force:source:deploy --checkonly --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ steps.extract_tests.outputs.test_classes }}
       - name: Deploy Source to Developer Org
+        if: steps.extract_tests.outputs.test_classes != ''
         run: |
-          sfdx force:source:deploy --manifest ./manifest/package.xml --targetusername developer
+          sfdx force:source:deploy --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests ${{ steps.extract_tests.outputs.test_classes }}
       - name: Run Apex Tests and Generate Report
+        if: steps.extract_tests.outputs.test_classes != ''
         run: |
-          result=$(sfdx force:apex:test:run --resultformat json --wait 10 --targetusername developer | tee result.json)
-          testrunid=$(jq -r '.result.testRunId' result.json)
-          sfdx apex:test:get --codecoverage --outputdir test-results -u developer
+          result=$(sf apex run test --result-format json --wait 10 --target-org developer | tee result.json)
+          testrunid=$(jq -r '.testRunId' result.json)
+          sf apex get test --result-format json --testrunid "$testrunid" --outputdir test-results --target-org developer
+      - name: Convert Coverage Report to XML
+        if: steps.extract_tests.outputs.test_classes != ''
+        run: |
+          sf apex get test --codecoverage --outputdir test-results --target-org developer
       - name: SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@v2.1.0
         env:
@@ -53,7 +98,7 @@ jobs:
           SONAR_ORGANIZATION: ${{ secrets.SONAR_ORGANIZATION }}
         with:
           args: >
-            -Dsonar.projectKey=YourProjectKey
+            -Dsonar.projectKey=SNHS1998_SonarQube-DevOpsCenter-Public
             -Dsonar.apex.coverage.reportPaths=test-results/apex-codecoverage.xml
       - name: Check SonarQube Quality Gate
         id: quality_gate
@@ -61,7 +106,7 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         run: |
-          status=$(curl -s "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=YourProjectKey" -u "${SONAR_TOKEN}:")
+          status=$(curl -s "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=SNHS1998_SonarQube-DevOpsCenter-Public" -u "${SONAR_TOKEN}:")
           coverage=$(echo "$status" | jq -r '.projectStatus.conditions[] | select(.metricKey == "new_coverage") | .actualValue')
           echo "Current New Code Coverage: $coverage%"
           if (( $(echo "$coverage == null" | bc -l) )); then
