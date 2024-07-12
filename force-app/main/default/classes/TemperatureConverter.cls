@@ -16,7 +16,7 @@ public with sharing class TemperatureConverter {
         return (fahrenheit - 32) * 5 / 9;
     }
 }
-// This is to check the test class trigger
+// This is to check the test class trigge
 //add
 //tjy
 //

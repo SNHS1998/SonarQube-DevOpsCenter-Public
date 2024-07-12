@@ -89,14 +89,10 @@ jobs:
       - name: Convert Coverage Report to XML using Python
         if: steps.validate_deployment.outcome == 'success'
         run: |
-          python -c "
-           import json
-               result = json.load(open('validation_result.json'))
-                coverage = [{'file': 'force-app/main/default/classes/' + entry['name'] + '.cls',
-                        'coverage': {'numCoveredLines': entry['numLocations'] - entry['numLocationsNotCovered'],'numLines': entry['numLocations']}
-                } for entry in result['result']['details']['runTestResult']['codeCoverage']]
-                with open('test-results/apex-codecoverage.xml', 'w') as f:
-                json.dump({'coverage': coverage}, f, indent=2)"
+          python -c "import json; result = json.load(open('validation_result.json')); coverage = [{'file': 'force-app/main/default/classes/' + entry['name'] + '.cls','coverage': {'numCoveredLines': entry['numLocations'] - entry['numLocationsNotCovered'],'numLines': entry['numLocations']}} for entry in result['result']['details']['runTestResult']['codeCoverage']]; with open('test-results/apex-codecoverage.xml', 'w') as f: json.dump({'coverage': coverage}, f, indent=2)"
+          
+      - name: Print Apex Code Coverage XML
+        run: |
           echo "Printing apex-codecoverage.xml for debugging:"
           cat test-results/apex-codecoverage.xml
 
