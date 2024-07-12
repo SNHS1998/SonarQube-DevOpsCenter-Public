@@ -103,11 +103,10 @@ jobs:
 
       - name: Convert JSON to XML using jq
         run: |
+          echo "<coverage>" > test-results/apex-codecoverage.xml
           cat test-results/apex-codecoverage.json | jq -r '
           .coverage[] | 
-          "<file name=\"" + .file + "\">\n<coverage>\n<numCoveredLines>" + (.coverage.numCoveredLines|tostring) + "</numCoveredLines>\n<numLines>" + (.coverage.numLines|tostring) + "</numLines>\n</coverage>\n</file>"' > test-results/apex-codecoverage.xml
-
-          echo "<coverage>" | cat - test-results/apex-codecoverage.xml > temp && mv temp test-results/apex-codecoverage.xml
+          "<file name=\"" + .file + "\">\n<coverage>\n<numCoveredLines>" + (.coverage.numCoveredLines|tostring) + "</numCoveredLines>\n<numLines>" + (.coverage.numLines|tostring) + "</numLines>\n</coverage>\n</file>"' >> test-results/apex-codecoverage.xml
           echo "</coverage>" >> test-results/apex-codecoverage.xml
 
       - name: Print Apex Code Coverage XML
