@@ -71,21 +71,16 @@ jobs:
       - name: Install xmlstarlet
         run: sudo apt-get install -y xmlstarlet
 
-      - name: Extract Test Class Names from Package.xml
-        id: extract_tests
-        run: |
-          if [ -f ./manifest/package.xml ]; then
-            test_classes=$(xmlstarlet sel -t -v "//members" -o "," ./manifest/package.xml | sed 's/,$//')
-            echo "::set-output name=test_classes::$test_classes"
-          else
-            echo "::set-output name=test_classes::"
-          fi
-
       - name: Validate Deployment using Manifest
         if: steps.generate_package.outputs.changed == 'true'
         id: validate_deployment
         run: |
-          sfdx force:source:deploy --checkonly --manifest ./manifest/package.xml --target-org developer --testlevel RunSpecifiedTests --runtests TemperatureConverterTest
+          sfdx force:source:deploy --checkonly --manifest ./manifest/package.xml --target-org developer --testlevel RunSpecifiedTests --runtests TemperatureConverterTest --json > validation_result.json
+
+      - name: Parse Validation Result for Coverage
+        if: steps.validate_deployment.outcome == 'success'
+        run: |
+          jq -r '.result.details.runTestResult.codeCoverage[] | select(.name != null) | {name, numLocations, numLocationsNotCovered}' validation_result.json > coverage_result.json
 
       - name: Deploy Source to Developer Org
         if: steps.generate_package.outputs.changed == 'true'
@@ -93,19 +88,18 @@ jobs:
         run: |
           sfdx force:source:deploy --manifest ./manifest/package.xml --target-org developer --testlevel RunSpecifiedTests --runtests TemperatureConverterTest
 
-      - name: Run Apex Tests and Generate Report
-        if: steps.deploy_source.outcome == 'success' || steps.validate_deployment.outcome == 'success'
-        run: |
-          result=$(sfdx apex run test --result-format json --wait 10 --target-org developer | tee result.json)
-          testrunid=$(jq -r '.testRunId' result.json)
-          sfdx apex get test --testrunid "$testrunid" --result-format json --outputdir test-results --target-org developer
-
       - name: Convert Coverage Report to XML
-        if: steps.deploy_source.outcome == 'success' || steps.validate_deployment.outcome == 'success'
+        if: steps.validate_deployment.outcome == 'success'
         run: |
-          sfdx apex get test --codecoverage --result-format json --outputdir test-results --target-org developer
-          # Convert to SonarQube's format
-          sfdx sfpowerkit:apex:test:coverage:report --resultfile test-results/test-result-codecoverage.json --reporttype xml --outputdir test-results
+          jq -n --argfile coverage coverage_result.json '{
+            "coverage": ($coverage | map({
+              "file": ("force-app/main/default/classes/" + .name + ".cls"),
+              "coverage": {
+                "numCoveredLines": (.numLocations - .numLocationsNotCovered),
+                "numLines": .numLocations
+              }
+            }))
+          }' > test-results/apex-codecoverage.xml
 
       - name: SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@v2.1.0
