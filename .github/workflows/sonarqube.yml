@@ -45,7 +45,7 @@ jobs:
           cat all-changed-components.txt
           grep "\.cls$" all-changed-components.txt | sed 's|force-app/main/default/classes/||' > changed-components.txt
           cat changed-components.txt
-          if [ -s changed-components.txt]; then
+          if [ -s changed-components.txt ]; then
             echo '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' > ./manifest/package.xml
             echo '<Package xmlns="http://soap.sforce.com/2006/04/metadata">' >> ./manifest/package.xml
             echo '  <types>' >> ./manifest/package.xml
@@ -86,16 +86,29 @@ jobs:
       - name: Create test-results Directory
         run: mkdir -p test-results
 
-      - name: Create Python Script for Coverage Conversion
+      - name: Convert Coverage Report to XML using jq
+        if: steps.validate_deployment.outcome == 'success'
         run: |
-          echo "import json" > convert_coverage.py
-          echo "result = json.load(open('validation_result.json'))" >> convert_coverage.py
-          echo "coverage = [{'file': 'force-app/main/default/classes/' + entry['name'] + '.cls', 'coverage': {'numCoveredLines': entry['numLocations'] - entry['numLocationsNotCovered'], 'numLines': entry['numLocations']}} for entry in result['result']['details']['runTestResult']['codeCoverage']]" >> convert_coverage.py
-          echo "with open('test-results/apex-codecoverage.xml', 'w') as f:" >> convert_coverage.py
-          echo "    json.dump({'coverage': coverage}, f, indent=2)" >> convert_coverage.py
+          cat validation_result.json | jq -r '
+          .result.details.runTestResult.codeCoverage[] | 
+          {
+            file: "force-app/main/default/classes/" + .name + ".cls",
+            coverage: {
+              numCoveredLines: (.numLocations - .numLocationsNotCovered),
+              numLines: .numLocations
+            }
+          }' | jq -s '{coverage: .}' > test-results/apex-codecoverage.json
+          
+          cat test-results/apex-codecoverage.json
 
-      - name: Execute Python Script for Coverage Conversion
-        run: python convert_coverage.py
+      - name: Convert JSON to XML using xmlstarlet
+        run: |
+          cat test-results/apex-codecoverage.json | jq -r '
+          .coverage[] | 
+          "<file name=\"" + .file + "\">\n<coverage>\n<numCoveredLines>" + (.coverage.numCoveredLines|tostring) + "</numCoveredLines>\n<numLines>" + (.coverage.numLines|tostring) + "</numLines>\n</coverage>\n</file>"' > test-results/apex-codecoverage.xml
+          
+          echo "<coverage>" | cat - test-results/apex-codecoverage.xml > temp && mv temp test-results/apex-codecoverage.xml
+          echo "</coverage>" >> test-results/apex-codecoverage.xml
 
       - name: Print Apex Code Coverage XML
         run: |
