@@ -32,9 +32,11 @@ jobs:
       - name: Authorize Dev Hub (Production)
         run: |
           sfdx auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_PROD }} --jwtkeyfile assets/server.key --username ${{ secrets.SALESFORCE_PROD_USERNAME }} --setdefaultdevhubusername --setalias prod
+
       - name: Authorize Developer Org
         run: |
           sfdx auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_DEVELOPER }} --jwtkeyfile assets/server.key --username ${{ secrets.DEVELOPER_SANDBOX_USERNAME }} --setalias developer
+
       - name: Generate Package.xml for Changed Components
         id: generate_package
         run: |
@@ -55,9 +57,12 @@ jobs:
             echo '  <version>53.0</version>' >> ./manifest/package.xml
             echo '</Package>' >> ./manifest/package.xml
             cat ./manifest/package.xml
+            echo "::set-output name=changed::true"
           else
             echo "No Apex classes were changed."
+            echo "::set-output name=changed::false"
           fi
+
       - name: Skip if no Apex classes changed
         if: steps.generate_package.outputs.changed == 'false'
         run: echo "No Apex classes changed. Skipping deployment and tests."
@@ -69,26 +74,39 @@ jobs:
       - name: Extract Test Class Names from Package.xml
         id: extract_tests
         run: |
-          test_classes=$(xmlstarlet sel -t -v "//members" -o "," ./manifest/package.xml | sed 's/,$//')
-          echo "::set-output name=test_classes::$test_classes"
+          if [ -f ./manifest/package.xml ]; then
+            test_classes=$(xmlstarlet sel -t -v "//members" -o "," ./manifest/package.xml | sed 's/,$//')
+            echo "::set-output name=test_classes::$test_classes"
+          else
+            echo "::set-output name=test_classes::"
+          fi
+
       - name: Validate Deployment using Manifest
-        
+        if: steps.generate_package.outputs.changed == 'true'
+        id: validate_deployment
         run: |
           sfdx force:source:deploy --checkonly --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests TemperatureConverterTest
+
       - name: Deploy Source to Developer Org
-        
+        if: steps.generate_package.outputs.changed == 'true'
+        id: deploy_source
         run: |
           sfdx force:source:deploy --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests TemperatureConverterTest
+
       - name: Run Apex Tests and Generate Report
-        if: steps.extract_tests.outputs.test_classes != ''
+        if: steps.deploy_source.outcome == 'success' || steps.validate_deployment.outcome == 'success'
         run: |
-          result=$(sf apex run test --result-format json --wait 10 --target-org developer | tee result.json)
+          result=$(sfdx force:apex:test:run --resultformat json --wait 10 --targetusername developer | tee result.json)
           testrunid=$(jq -r '.testRunId' result.json)
-          sf apex get test --result-format json --testrunid "$testrunid" --outputdir test-results --target-org developer
+          sfdx force:apex:test:report --testrunid "$testrunid" --resultformat json --outputdir test-results --targetusername developer
+
       - name: Convert Coverage Report to XML
-        if: steps.extract_tests.outputs.test_classes != ''
+        if: steps.deploy_source.outcome == 'success' || steps.validate_deployment.outcome == 'success'
         run: |
-          sf apex get test --codecoverage --outputdir test-results --target-org developer
+          sfdx force:apex:test:report --codecoverage --resultformat json --outputdir test-results --targetusername developer
+          # Convert to SonarQube's format
+          sfdx sfpowerkit:apex:test:coverage:report --resultfile test-results/test-result-codecoverage.json --reporttype xml --outputdir test-results
+
       - name: SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@v2.1.0
         env:
@@ -100,6 +118,7 @@ jobs:
           args: >
             -Dsonar.projectKey=SNHS1998_SonarQube-DevOpsCenter-Public
             -Dsonar.apex.coverage.reportPaths=test-results/apex-codecoverage.xml
+
       - name: Check SonarQube Quality Gate
         id: quality_gate
         env:
@@ -118,6 +137,7 @@ jobs:
           else
             echo "New code coverage is sufficient. Proceeding with the build."
           fi
+
       - name: Fail build on Quality Gate status
         if: steps.quality_gate.outcome != 'success'
         run: exit 1
