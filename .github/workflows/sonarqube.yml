@@ -92,21 +92,21 @@ jobs:
           cat validation_result.json | jq -r '
           .result.details.runTestResult.codeCoverage[] | 
           {
-            file: "force-app/main/default/classes/" + .name + ".cls",
+            file: ("force-app/main/default/classes/" + .name + ".cls"),
             coverage: {
               numCoveredLines: (.numLocations - .numLocationsNotCovered),
               numLines: .numLocations
             }
           }' | jq -s '{coverage: .}' > test-results/apex-codecoverage.json
-          
+
           cat test-results/apex-codecoverage.json
 
-      - name: Convert JSON to XML using xmlstarlet
+      - name: Convert JSON to XML using jq
         run: |
           cat test-results/apex-codecoverage.json | jq -r '
           .coverage[] | 
           "<file name=\"" + .file + "\">\n<coverage>\n<numCoveredLines>" + (.coverage.numCoveredLines|tostring) + "</numCoveredLines>\n<numLines>" + (.coverage.numLines|tostring) + "</numLines>\n</coverage>\n</file>"' > test-results/apex-codecoverage.xml
-          
+
           echo "<coverage>" | cat - test-results/apex-codecoverage.xml > temp && mv temp test-results/apex-codecoverage.xml
           echo "</coverage>" >> test-results/apex-codecoverage.xml
 
