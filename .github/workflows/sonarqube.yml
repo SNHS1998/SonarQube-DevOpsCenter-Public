@@ -54,7 +54,7 @@ jobs:
             done < changed-components.txt
             echo '    <name>ApexClass</name>' >> ./manifest/package.xml
             echo '  </types>' >> ./manifest/package.xml
-            echo '  <version>53.0' >> ./manifest/package.xml
+            echo '  <version>53.0</version>' >> ./manifest/package.xml
             echo '</Package>' >> ./manifest/package.xml
             cat ./manifest/package.xml
             echo "::set-output name=changed::true"

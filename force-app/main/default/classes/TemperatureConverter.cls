@@ -18,6 +18,6 @@ public with sharing class TemperatureConverter {
 }
 // This is to check the test class trigger
 //added the cha   xsffghf
-//9/7/2024 July 23fdghdfdjftjgdrhhxvxgddfhhfdxxgdfg
+//9/7/2024 J
 //kjhfsdsggdvhghvcgjxg
 //klijlkjddyrfzfsfsfssASFszfszgddvx
