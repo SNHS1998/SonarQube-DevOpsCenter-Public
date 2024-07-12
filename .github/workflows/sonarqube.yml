@@ -54,7 +54,7 @@ jobs:
             done < changed-components.txt
             echo '    <name>ApexClass</name>' >> ./manifest/package.xml
             echo '  </types>' >> ./manifest/package.xml
-            echo '  <version>53.0</version>' >> ./manifest/package.xml
+            echo '  <version>53.0' >> ./manifest/package.xml
             echo '</Package>' >> ./manifest/package.xml
             cat ./manifest/package.xml
             echo "::set-output name=changed::true"
@@ -85,25 +85,25 @@ jobs:
         if: steps.generate_package.outputs.changed == 'true'
         id: validate_deployment
         run: |
-          sfdx force:source:deploy --checkonly --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests TemperatureConverterTest
+          sfdx force:source:deploy --checkonly --manifest ./manifest/package.xml --target-org developer --testlevel RunSpecifiedTests --runtests TemperatureConverterTest
 
       - name: Deploy Source to Developer Org
         if: steps.generate_package.outputs.changed == 'true'
         id: deploy_source
         run: |
-          sfdx force:source:deploy --manifest ./manifest/package.xml --targetusername developer --testlevel RunSpecifiedTests --runtests TemperatureConverterTest
+          sfdx force:source:deploy --manifest ./manifest/package.xml --target-org developer --testlevel RunSpecifiedTests --runtests TemperatureConverterTest
 
       - name: Run Apex Tests and Generate Report
         if: steps.deploy_source.outcome == 'success' || steps.validate_deployment.outcome == 'success'
         run: |
-          result=$(sfdx force:apex:test:run --resultformat json --wait 10 --targetusername developer | tee result.json)
+          result=$(sfdx apex run test --result-format json --wait 10 --target-org developer | tee result.json)
           testrunid=$(jq -r '.testRunId' result.json)
-          sfdx force:apex:test:report --testrunid "$testrunid" --resultformat json --outputdir test-results --targetusername developer
+          sfdx apex get test --testrunid "$testrunid" --result-format json --outputdir test-results --target-org developer
 
       - name: Convert Coverage Report to XML
         if: steps.deploy_source.outcome == 'success' || steps.validate_deployment.outcome == 'success'
         run: |
-          sfdx force:apex:test:report --codecoverage --resultformat json --outputdir test-results --targetusername developer
+          sfdx apex get test --codecoverage --result-format json --outputdir test-results --target-org developer
           # Convert to SonarQube's format
           sfdx sfpowerkit:apex:test:coverage:report --resultfile test-results/test-result-codecoverage.json --reporttype xml --outputdir test-results
 
