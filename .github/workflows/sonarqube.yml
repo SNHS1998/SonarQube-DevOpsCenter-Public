@@ -82,11 +82,8 @@ jobs:
         run: |
           jq -r '.result.details.runTestResult.codeCoverage[] | select(.name != null) | {name, numLocations, numLocationsNotCovered}' validation_result.json > coverage_result.json
 
-      - name: Deploy Source to Developer Org
-        if: steps.generate_package.outputs.changed == 'true'
-        id: deploy_source
-        run: |
-          sfdx force:source:deploy --manifest ./manifest/package.xml --target-org developer --testlevel RunSpecifiedTests --runtests TemperatureConverterTest
+      - name: Create test-results Directory
+        run: mkdir -p test-results
 
       - name: Convert Coverage Report to XML
         if: steps.validate_deployment.outcome == 'success'
@@ -100,6 +97,12 @@ jobs:
               }
             }))
           }' > test-results/apex-codecoverage.xml
+
+      - name: Deploy Source to Developer Org
+        if: steps.generate_package.outputs.changed == 'true'
+        id: deploy_source
+        run: |
+          sfdx force:source:deploy --manifest ./manifest/package.xml --target-org developer --testlevel RunSpecifiedTests --runtests TemperatureConverterTest
 
       - name: SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@v2.1.0
