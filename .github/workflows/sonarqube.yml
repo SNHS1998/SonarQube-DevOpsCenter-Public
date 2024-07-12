@@ -80,7 +80,8 @@ jobs:
       - name: Parse Validation Result for Coverage
         if: steps.validate_deployment.outcome == 'success'
         run: |
-          jq -r '.result.details.runTestResult.codeCoverage[] | select(.name != null) | {name, numLocations, numLocationsNotCovered}' validation_result.json > coverage_result.json
+          jq -r '.result.details.runTestResult.codeCoverage[] | {name, numLocations, numLocationsNotCovered}' validation_result.json > coverage_result.json
+          cat coverage_result.json
 
       - name: Create test-results Directory
         run: mkdir -p test-results
@@ -97,6 +98,7 @@ jobs:
               }
             }))
           }' > test-results/apex-codecoverage.xml
+          cat test-results/apex-codecoverage.xml
 
       - name: Deploy Source to Developer Org
         if: steps.generate_package.outputs.changed == 'true'
