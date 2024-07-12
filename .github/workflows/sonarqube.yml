@@ -32,11 +32,9 @@ jobs:
       - name: Authorize Dev Hub (Production)
         run: |
           sfdx auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_PROD }} --jwtkeyfile assets/server.key --username ${{ secrets.SALESFORCE_PROD_USERNAME }} --setdefaultdevhubusername --setalias prod
-
       - name: Authorize Developer Org
         run: |
           sfdx auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_DEVELOPER }} --jwtkeyfile assets/server.key --username ${{ secrets.DEVELOPER_SANDBOX_USERNAME }} --setalias developer
-
       - name: Generate Package.xml for Changed Components
         id: generate_package
         run: |
@@ -62,7 +60,6 @@ jobs:
             echo "No Apex classes were changed."
             echo "::set-output name=changed::false"
           fi
-
       - name: Skip if no Apex classes changed
         if: steps.generate_package.outputs.changed == 'false'
         run: echo "No Apex classes changed. Skipping deployment and tests."
@@ -76,13 +73,11 @@ jobs:
         id: validate_deployment
         run: |
           sfdx force:source:deploy --checkonly --manifest ./manifest/package.xml --target-org developer --testlevel RunSpecifiedTests --runtests TemperatureConverterTest --json > validation_result.json
-
       - name: Print Validation Result JSON
         if: steps.validate_deployment.outcome == 'success'
         run: |
           echo "Printing validation_result.json for debugging:"
           cat validation_result.json
-
       - name: Create test-results Directory
         run: mkdir -p test-results
 
@@ -98,9 +93,7 @@ jobs:
               numLines: .numLocations
             }
           }' | jq -s '{coverage: .}' > test-results/apex-codecoverage.json
-
           cat test-results/apex-codecoverage.json
-
       - name: Convert JSON to XML using jq
         run: |
           echo "<coverage>" > test-results/apex-codecoverage.xml
@@ -108,18 +101,24 @@ jobs:
           .coverage[] | 
           "<file name=\"" + .file + "\">\n<coverage>\n<numCoveredLines>" + (.coverage.numCoveredLines|tostring) + "</numCoveredLines>\n<numLines>" + (.coverage.numLines|tostring) + "</numLines>\n</coverage>\n</file>"' >> test-results/apex-codecoverage.xml
           echo "</coverage>" >> test-results/apex-codecoverage.xml
-
       - name: Print Apex Code Coverage XML
         run: |
           echo "Printing apex-codecoverage.xml for debugging:"
           cat test-results/apex-codecoverage.xml
-
+      - name: Calculate and Print Coverage Percentage
+        run: |
+          totalCoveredLines=$(jq '[.coverage[].coverage.numCoveredLines] | add' test-results/apex-codecoverage.json)
+          totalLines=$(jq '[.coverage[].coverage.numLines] | add' test-results/apex-codecoverage.json)
+          coveragePercentage=$(echo "scale=2; ($totalCoveredLines / $totalLines) * 100" | bc)
+          echo "Total Covered Lines: $totalCoveredLines"
+          echo "Total Lines: $totalLines"
+          echo "Coverage Percentage: $coveragePercentage%"
+          echo "::set-output name=coverage_percentage::$coveragePercentage"
       - name: Deploy Source to Developer Org
         if: steps.generate_package.outputs.changed == 'true'
         id: deploy_source
         run: |
           sfdx force:source:deploy --manifest ./manifest/package.xml --target-org developer --testlevel RunSpecifiedTests --runtests TemperatureConverterTest
-
       - name: SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@v2.1.0
         env:
@@ -139,6 +138,8 @@ jobs:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         run: |
           status=$(curl -s "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=SNHS1998_SonarQube-DevOpsCenter-Public" -u "${SONAR_TOKEN}:")
+          echo "SonarQube API response:"
+          echo "$status"
           coverage=$(echo "$status" | jq -r '.projectStatus.conditions[] | select(.metricKey == "coverage" or .metricKey == "new_coverage") | .actualValue')
           if [ -z "$coverage" ]; then
             echo "Coverage data is not available."
