@@ -86,11 +86,17 @@ jobs:
       - name: Create test-results Directory
         run: mkdir -p test-results
 
+      - name: Run Apex Tests and Generate Coverage Report
+        if: steps.validate_deployment.outcome == 'success'
+        run: |
+          sfdx force:apex:test:run --codecoverage --resultformat json --targetusername developer --outputdir test-results --wait 10
+          cat test-results/test-result-*.json
+
       - name: Convert Coverage Report to XML using jq
         if: steps.validate_deployment.outcome == 'success'
         run: |
-          cat validation_result.json | jq -r '
-          .result.details.runTestResult.codeCoverage[] | 
+          cat test-results/test-result-*.json | jq -r '
+          .result.coverage.coverage[] | 
           {
             file: ("force-app/main/default/classes/" + .name + ".cls"),
             coverage: {
@@ -144,8 +150,8 @@ jobs:
       - name: Print SonarQube Scanner Logs
         run: |
           echo "Printing SonarQube scanner logs for debugging:"
-          cat .scannerwork/report-task.txt
-          cat .scannerwork/scanner-report.log
+          cat .scannerwork/report-task.txt || true
+          cat .scannerwork/scanner-report.log || true
 
       - name: Check SonarQube Quality Gate and Display Coverage
         id: quality_gate
