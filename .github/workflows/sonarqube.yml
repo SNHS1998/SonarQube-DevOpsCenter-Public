@@ -80,29 +80,29 @@ jobs:
       - name: Print Validation Result JSON
         if: steps.validate_deployment.outcome == 'success'
         run: |
+          echo "Printing validation_result.json for debugging:"
           cat validation_result.json
-
-      - name: Parse Validation Result for Coverage
-        if: steps.validate_deployment.outcome == 'success'
-        run: |
-          jq -r '.result.details.runTestResult.codeCoverage[] | {name, numLocations, numLocationsNotCovered}' validation_result.json > coverage_result.json
-          cat coverage_result.json
 
       - name: Create test-results Directory
         run: mkdir -p test-results
 
-      - name: Convert Coverage Report to XML
+      - name: Convert Coverage Report to XML using Python
         if: steps.validate_deployment.outcome == 'success'
         run: |
-          jq -n --argfile coverage coverage_result.json '{
-            "coverage": ($coverage | map({
-              "file": ("force-app/main/default/classes/" + .name + ".cls"),
-              "coverage": {
-                "numCoveredLines": (.numLocations - .numLocationsNotCovered),
-                "numLines": .numLocations
-              }
-            }))
-          }' > test-results/apex-codecoverage.xml
+          python -c "
+import json
+result = json.load(open('validation_result.json'))
+coverage = [{
+  'file': 'force-app/main/default/classes/' + entry['name'] + '.cls',
+  'coverage': {
+    'numCoveredLines': entry['numLocations'] - entry['numLocationsNotCovered'],
+    'numLines': entry['numLocations']
+  }
+} for entry in result['result']['details']['runTestResult']['codeCoverage']]
+with open('test-results/apex-codecoverage.xml', 'w') as f:
+    json.dump({'coverage': coverage}, f, indent=2)
+"
+          echo "Printing apex-codecoverage.xml for debugging:"
           cat test-results/apex-codecoverage.xml
 
       - name: Deploy Source to Developer Org

@@ -18,6 +18,6 @@ public with sharing class TemperatureConverter {
 }
 // This is to check the test class trigger
 //add
-//9/
+
 //
 //kl
