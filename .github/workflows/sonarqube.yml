@@ -114,6 +114,16 @@ jobs:
           echo "Printing apex-codecoverage.xml for debugging:"
           cat test-results/apex-codecoverage.xml
 
+      - name: Calculate and Print Coverage Percentage
+        run: |
+          totalCoveredLines=$(jq '[.coverage[].coverage.numCoveredLines] | add' test-results/apex-codecoverage.json)
+          totalLines=$(jq '[.coverage[].coverage.numLines] | add' test-results/apex-codecoverage.json)
+          coveragePercentage=$(echo "scale=2; ($totalCoveredLines / $totalLines) * 100" | bc)
+          echo "Total Covered Lines: $totalCoveredLines"
+          echo "Total Lines: $totalLines"
+          echo "Coverage Percentage: $coveragePercentage%"
+          echo "::set-output name=coverage_percentage::$coveragePercentage"
+
       - name: Deploy Source to Developer Org
         if: steps.generate_package.outputs.changed == 'true'
         id: deploy_source
