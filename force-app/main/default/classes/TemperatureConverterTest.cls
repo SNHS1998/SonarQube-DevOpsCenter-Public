@@ -54,7 +54,7 @@ private class TemperatureConverterTest {
     }
 }
 //This is ch 
-//ufgjfgsfscbfbxhfzfdgds
-//9-7-sxfhfhhdf
-//kzzsgsfsddsfdvxzv
+//ufgjfgsfscbfbxhfzf
+//9-7-sxfh
+//kzzsgsfsddsfdv
 //dfdkklhfgxhvvvvv
