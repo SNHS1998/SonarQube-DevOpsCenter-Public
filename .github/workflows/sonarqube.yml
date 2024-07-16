@@ -86,17 +86,11 @@ jobs:
       - name: Create test-results Directory
         run: mkdir -p test-results
 
-      - name: Run Apex Tests and Generate Coverage Report
-        if: steps.validate_deployment.outcome == 'success'
-        run: |
-          sfdx apex run test --code-coverage --result-format json --target-org developer --output-dir test-results --wait 10
-          cat test-results/test-result-*.json
-
       - name: Convert Coverage Report to XML using jq
         if: steps.validate_deployment.outcome == 'success'
         run: |
-          cat test-results/test-result-*.json | jq -r '
-          .result.coverage.coverage[] | 
+          cat validation_result.json | jq -r '
+          .result.details.runTestResult.codeCoverage[] | 
           {
             file: ("force-app/main/default/classes/" + .name + ".cls"),
             coverage: {
@@ -104,6 +98,7 @@ jobs:
               numLines: .numLocations
             }
           }' | jq -s '{coverage: .}' > test-results/apex-codecoverage.json
+
           cat test-results/apex-codecoverage.json
 
       - name: Convert JSON to XML using jq
@@ -145,34 +140,25 @@ jobs:
         with:
           args: >
             -Dsonar.projectKey=SNHS1998_SonarQube-DevOpsCenter-Public
-            -Dsonar.apex.coverage.reportPaths=test-results/apex-codecoverage.xml
+            -Dsonar.coverageReportPaths=test-results/apex-codecoverage.xml
 
-      - name: Print SonarQube Scanner Logs
-        run: |
-          echo "Printing SonarQube scanner logs for debugging:"
-          cat .scannerwork/report-task.txt || true
-          cat .scannerwork/scanner-report.log || true
-
-      - name: Check SonarQube Quality Gate and Display Coverage
+      - name: Check SonarQube Quality Gate
         id: quality_gate
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         run: |
           status=$(curl -s "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=SNHS1998_SonarQube-DevOpsCenter-Public" -u "${SONAR_TOKEN}:")
-          echo "SonarQube API response:"
-          echo "$status"
-          coverage=$(echo "$status" | jq -r '.projectStatus.conditions[] | select(.metricKey == "coverage" or .metricKey == "new_coverage") | .actualValue')
-          if [ -z "$coverage" ]; then
-            echo "Coverage data is not available."
+          coverage=$(echo "$status" | jq -r '.projectStatus.conditions[] | select(.metricKey == "new_coverage") | .actualValue')
+          echo "Current New Code Coverage: $coverage%"
+          if (( $(echo "$coverage == null" | bc -l) )); then
+            echo "New code coverage information is not available."
             exit 1
-          fi
-          echo "Current Coverage: $coverage%"
-          if (( $(echo "$coverage < 80" | bc -l) )); then
-            echo "Coverage is less than 80%. Failing the build."
+          elif (( $(echo "$coverage < 80" | bc -l) )); then
+            echo "New code coverage is less than 80%. Failing the build."
             exit 1
           else
-            echo "Coverage is sufficient. Proceeding with the build."
+            echo "New code coverage is sufficient. Proceeding with the build."
           fi
 
       - name: Fail build on Quality Gate status
