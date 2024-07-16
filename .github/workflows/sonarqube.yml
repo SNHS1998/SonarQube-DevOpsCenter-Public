@@ -86,10 +86,11 @@ jobs:
       - name: Run Apex Tests and Generate Coverage Report
         if: steps.generate_package.outputs.changed == 'true'
         run: |
-          sfdx force:apex:test:run --targetusername developer --resultformat json --outputdir test-results --codecoverage --wait 10
+          sfdx apex run test -o developer -r json -d test-results -c -w 10
           cat test-results/test-result-codecoverage.json
 
       - name: SonarQube Scan
+        if: steps.generate_package.outputs.changed == 'true'
         uses: sonarsource/sonarqube-scan-action@v2.1.0
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -99,6 +100,7 @@ jobs:
         with:
           args: >
             -Dsonar.projectKey=SNHS1998_SonarQube-DevOpsCenter-Public
+            -Dsonar.branch.name=${{ github.ref_name }}
             -Dsonar.language=apex
             -Dsonar.sourceEncoding=UTF-8
             -Dsonar.apex.coverage.reportPath=test-results/test-result-codecoverage.json
@@ -106,12 +108,13 @@ jobs:
             -Dsonar.exclusions=**/*.cmp,**/force-app/**/fflib_*.cls,**/*.yml,**/*.js,**/*.xml,**/*.css,**/*.html,**/*.woff2,**/*.woff,**/*.auradoc,**/*.svg,force-app/main/default/staticresources/**
 
       - name: Check SonarQube Quality Gate
+        if: steps.generate_package.outputs.changed == 'true'
         id: quality_gate
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         run: |
-          status=$(curl -s "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=SNHS1998_SonarQube-DevOpsCenter-Public" -u "${SONAR_TOKEN}:")
+          status=$(curl -s "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=SNHS1998_SonarQube-DevOpsCenter-Public&branch=${{ github.ref_name }}" -u "${SONAR_TOKEN}:")
           coverage=$(echo "$status" | jq -r '.projectStatus.conditions[] | select(.metricKey == "new_coverage") | .actualValue')
           echo "Current New Code Coverage: $coverage%"
           if [ "$coverage" == "null" ]; then
