@@ -80,21 +80,23 @@ jobs:
 
       - name: Run PMD Analysis
         if: steps.generate_package.outputs.changed == 'true'
+        id: run_pmd
         run: |
+          set +e
           ./pmd-bin-6.41.0/bin/run.sh pmd -d ./force-app/main/default/classes -R pmd-rules/apex-ruleset.xml -f text -r pmd-report.txt
-        env:
-          JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/11.0.23-9/x64
-          JAVA_HOME_11_X64: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/11.0.23-9/x64
-
-      - name: Print PMD Results
-        if: steps.generate_package.outputs.changed == 'true'
-        run: cat pmd-report.txt
+          PMD_EXIT_CODE=$?
+          echo "PMD analysis completed with exit code $PMD_EXIT_CODE"
+          set -e
+          cat pmd-report.txt
+          exit $PMD_EXIT_CODE
 
       - name: Check PMD Results
         if: steps.generate_package.outputs.changed == 'true'
         run: |
+          cat pmd-report.txt
           if grep -q "Priority:" pmd-report.txt; then
-            echo "PMD found issues in the code. Failing the build."
+            echo "PMD found issues in the code. Here are the details:"
+            cat pmd-report.txt
             exit 1
           else
             echo "No PMD issues found. Proceeding with the build."
