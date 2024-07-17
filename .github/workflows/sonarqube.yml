@@ -3,20 +3,30 @@ name: CI/CD Pipeline for Salesforce with SonarCloud
 on:
   push:
     branches:
-      - 'WI-*'
+      - f2qapublic
+        
+  pull_request:
+    branches:
+      - f2qapublic
+    types:
+      - opened
+      - synchronize
+      - reopened
 
 jobs:
   sonarqube:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        shell: bash
-
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '11'
 
       - name: Install Node.js
         uses: actions/setup-node@v2
@@ -41,10 +51,8 @@ jobs:
         id: generate_package
         run: |
           mkdir -p ./manifest
-          git diff --name-only HEAD^..HEAD > all-changed-components.txt
-          cat all-changed-components.txt
+          git diff --name-only origin/main..HEAD > all-changed-components.txt
           grep "\.cls$" all-changed-components.txt | sed 's|force-app/main/default/classes/||' > changed-components.txt
-          cat changed-components.txt
           if [ -s changed-components.txt ]; then
             echo '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' > ./manifest/package.xml
             echo '<Package xmlns="http://soap.sforce.com/2006/04/metadata">' >> ./manifest/package.xml
@@ -56,7 +64,6 @@ jobs:
             echo '  </types>' >> ./manifest/package.xml
             echo '  <version>53.0</version>' >> ./manifest/package.xml
             echo '</Package>' >> ./manifest/package.xml
-            cat ./manifest/package.xml
             echo "::set-output name=changed::true"
           else
             echo "No Apex classes were changed."
@@ -68,25 +75,10 @@ jobs:
         run: echo "No Apex classes changed. Skipping deployment and tests."
         continue-on-error: true
 
-      - name: Validate Deployment using Manifest
-        if: steps.generate_package.outputs.changed == 'true'
-        id: validate_deployment
-        run: |
-          sfdx force:source:deploy --checkonly --manifest ./manifest/package.xml --target-org developer --testlevel RunSpecifiedTests --runtests TemperatureConverterTest --json > validation_result.json
-
-      - name: Print Validation Result JSON
-        if: steps.validate_deployment.outcome == 'success'
-        run: |
-          echo "Printing validation_result.json for debugging:"
-          cat validation_result.json
-
-      - name: Create test-results Directory
-        run: mkdir -p test-results
-
       - name: Run Apex Tests and Generate Coverage Report
         if: steps.generate_package.outputs.changed == 'true'
         run: |
-          sfdx apex run test -o developer -r json -d test-results -c -w 10
+          sfdx force:apex:test:run --testlevel RunSpecifiedTests --suitenames $(cat changed-components.txt | tr '\n' ',') --outputdir test-results --codecoverage --json --wait 60
           cat test-results/test-result-codecoverage.json
 
       - name: SonarQube Scan
@@ -99,8 +91,8 @@ jobs:
           SONAR_ORGANIZATION: ${{ secrets.SONAR_ORGANIZATION }}
         with:
           args: >
-            -Dsonar.projectKey=SNHS1998_SonarQube-DevOpsCenter-Public
-            -Dsonar.branch.name=${{ github.ref_name }}
+            -Dsonar.projectKey=SNHS1998_SonarQube-GitHubActions
+            -Dsonar.branch.name=${{ github.head_ref }}
             -Dsonar.language=apex
             -Dsonar.sourceEncoding=UTF-8
             -Dsonar.apex.coverage.reportPath=test-results/test-result-codecoverage.json
@@ -114,9 +106,11 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         run: |
-          status=$(curl -s "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=SNHS1998_SonarQube-DevOpsCenter-Public&branch=${{ github.ref_name }}" -u "${SONAR_TOKEN}:")
+          status=$(curl -s "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=SNHS1998_SonarQube-GitHubActions&branch=${{ github.head_ref }}" -u "${SONAR_TOKEN}:")
           coverage=$(echo "$status" | jq -r '.projectStatus.conditions[] | select(.metricKey == "new_coverage") | .actualValue')
+
           echo "Current New Code Coverage: $coverage%"
+
           if [ "$coverage" == "null" ]; then
             echo "New code coverage information is not available."
             exit 1
