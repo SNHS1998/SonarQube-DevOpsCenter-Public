@@ -38,7 +38,7 @@ private class TemperatureConverterTest {
             TemperatureConverter.celsiusToFahrenheit(null);
             System.assert(false, 'Expected exception for null Celsius value');
         } catch (IllegalArgumentException e) {
-            System.assertEquals('Celsius value cannot be null', e.getMessage());
+            System.assertEquals('Celsius value cannot be null', e.getMessage(), 'Exception message should be "Celsius value cannot be null"');
         }
     }
 
@@ -49,19 +49,7 @@ private class TemperatureConverterTest {
             TemperatureConverter.fahrenheitToCelsius(null);
             System.assert(false, 'Expected exception for null Fahrenheit value');
         } catch (IllegalArgumentException e) {
-            System.assertEquals('Fahrenheit value cannot be null', e.getMessage());
+            System.assertEquals('Fahrenheit value cannot be null', e.getMessage(), 'Exception message should be "Fahrenheit value cannot be null"');
         }
     }
 }
-//This is ch 
-
-//ufgjfgsfscbfbxhfzfdgds
-//9-7-sxfhfhhdf
-//kzzsgsfsddsfdvxzvsfsddf
-//dfdkklhfgxhvvvvvdvzsfd
-//sdgfdgsdf
-//ufgjfgsfscbfbxhfzf
-//9-7-sxfhsfdf
-//kzzsgsfsddsfdv
-//dfdkklhfgxhvvvvvzxc
-
