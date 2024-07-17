@@ -54,14 +54,14 @@ private class TemperatureConverterTest {
     }
 }
 //This is ch 
-<<<<<<< HEAD
+
 //ufgjfgsfscbfbxhfzfdgds
 //9-7-sxfhfhhdf
-//kzzsgsfsddsfdvxzvsfsdf
-//dfdkklhfgxhvvvvvdvz
-=======
+//kzzsgsfsddsfdvxzvsfsddf
+//dfdkklhfgxhvvvvvdvzsfd
+
 //ufgjfgsfscbfbxhfzf
 //9-7-sxfh
 //kzzsgsfsddsfdv
 //dfdkklhfgxhvvvvv
->>>>>>> caa47f8f3b1f6e686179ab84adfd184ab3108970
+

@@ -18,10 +18,7 @@ public with sharing class TemperatureConverter {
 }
 // This is to sschcbeck the test claxvss trig
 //addxvgdfssd
-<<<<<<< HEAD
-//tjysdghfhrhrdgfjxzvvxdgjghddvxfgfhsfgdgdfg
-=======
-//tjysdghfhrhrfjgjghdfhsfgdgdfg
->>>>>>> caa47f8f3b1f6e686179ab84adfd184ab3108970
+//tjysdghfhrhrdgfjxzvvxdgjghddvczxfgfhsfgdgdfg
+//tjysdghfhrhrfjgjghdfhsfgdgdfc
 //
 //kl
