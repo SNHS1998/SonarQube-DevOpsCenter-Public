@@ -1,67 +1,129 @@
+name: CI/CD Pipeline for Salesforce with PMD and Code Coverage
+
 on:
-    push:
-      branches:
-        
-        - f2qapublic
-        
-        
-    pull_request:
-      branches:
-        
-        - f2qapublic
-       
-      types:
-        - opened
-        - synchronize
-        - reopened
-  
-name: Main Workflow
-  
+  push:
+    branches:
+      - 'WI-*'
+
 jobs:
-    sonarqube:
-      runs-on: ubuntu-latest
-      steps:
-        - name: Checkout code
-          uses: actions/checkout@v4
-          with:
-            fetch-depth: 0
-  
-        - name: Set up Java
-          uses: actions/setup-java@v3
-          with:
-            distribution: 'temurin'
-            java-version: '11'
-  
-        - name: SonarQube Scan
-          uses: sonarsource/sonarqube-scan-action@v2.1.0
-          env:
-            SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-            SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-            SONAR_SCANNER_OPTS: '-Xmx1024m'
-            SONAR_ORGANIZATION: ${{ secrets.SONAR_ORGANIZATION }}
-  
-        - name: Check SonarQube Quality Gate
-          id: quality_gate
-          env:
-            SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-            SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-          run: |
-            status=$(curl -s "${SONAR_HOST_URL}/api/qualitygates/project_status?projectKey=SNHS1998_SonarQube-GitHubActions" -u "${SONAR_TOKEN}:")
-            coverage=$(echo "$status" | jq -r '.projectStatus.conditions[] | select(.metricKey == "new_coverage") | .actualValue')
-  
-            echo "Current New Code Coverage: $coverage%"
-  
-            if (( $(echo "$coverage == null" | bc -l) )); then
-              echo "New code coverage information is not available."
-              exit 1
-            elif (( $(echo "$coverage < 80" | bc -l) )); then
-              echo "New code coverage is less than 80%. Failing the build."
-              exit 1
-            else
-              echo "New code coverage is sufficient. Proceeding with the build."
-            fi
-  
-        - name: Fail build on Quality Gate status
-          if: steps.quality_gate.outcome != 'success'
-          run: exit 1
-  
+  analyze:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+
+      - name: Install Node.js
+        uses: actions/setup-node@v2
+        with:
+          node-version: '16'
+
+      - name: Install Salesforce CLI
+        run: npm install -g sfdx-cli
+
+      - name: Create JWT Key File
+        run: echo "${{ secrets.JWT_PRIVATE_KEY }}" > assets/server.key
+
+      - name: Authorize Dev Hub (Production)
+        run: |
+          sfdx auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_PROD }} --jwtkeyfile assets/server.key --username ${{ secrets.SALESFORCE_PROD_USERNAME }} --setdefaultdevhubusername --setalias prod
+
+      - name: Authorize Developer Org
+        run: |
+          sfdx auth:jwt:grant --clientid ${{ secrets.CONSUMER_KEY_DEVELOPER }} --jwtkeyfile assets/server.key --username ${{ secrets.DEVELOPER_SANDBOX_USERNAME }} --setalias developer
+
+      - name: Generate Package.xml for Changed Components
+        id: generate_package
+        run: |
+          mkdir -p ./manifest
+          git diff --name-only origin/main..HEAD > all-changed-components.txt
+          grep "\.cls$" all-changed-components.txt | sed 's|force-app/main/default/classes/||' > changed-components.txt
+          if [ -s changed-components.txt ]; then
+            echo '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' > ./manifest/package.xml
+            echo '<Package xmlns="http://soap.sforce.com/2006/04/metadata">' >> ./manifest/package.xml
+            echo '  <types>' >> ./manifest/package.xml
+            while read component; do
+              echo "    <members>${component%.cls}</members>" >> ./manifest/package.xml
+            done < changed-components.txt
+            echo '    <name>ApexClass</name>' >> ./manifest/package.xml
+            echo '  </types>' >> ./manifest/package.xml
+            echo '  <version>53.0</version>' >> ./manifest/package.xml
+            echo '</Package>' >> ./manifest/package.xml
+            cat ./manifest/package.xml
+            echo "::set-output name=changed::true"
+          else
+            echo "No Apex classes were changed."
+            echo "::set-output name=changed::false"
+          fi
+
+      - name: Skip if no Apex classes changed
+        if: steps.generate_package.outputs.changed == 'false'
+        run: echo "No Apex classes changed. Skipping deployment and tests."
+        continue-on-error: true
+
+      - name: Download PMD
+        if: steps.generate_package.outputs.changed == 'true'
+        run: |
+          wget https://github.com/pmd/pmd/releases/download/pmd_releases%2F6.41.0/pmd-bin-6.41.0.zip
+          unzip pmd-bin-6.41.0.zip
+
+      - name: Run PMD Analysis
+        if: steps.generate_package.outputs.changed == 'true'
+        id: run_pmd
+        run: |
+          set +e
+          ./pmd-bin-6.41.0/bin/run.sh pmd -d ./force-app/main/default/classes -R pmd-rules/apex-ruleset.xml -f text -r pmd-report.txt
+          PMD_EXIT_CODE=$?
+          echo "PMD analysis completed with exit code $PMD_EXIT_CODE"
+          set -e
+          cat pmd-report.txt
+          exit $PMD_EXIT_CODE
+
+      - name: Check PMD Results
+        if: steps.generate_package.outputs.changed == 'true'
+        run: |
+          cat pmd-report.txt
+          if grep -q "Priority:" pmd-report.txt; then
+            echo "PMD found issues in the code. Here are the details:"
+            cat pmd-report.txt
+            exit 1
+          else
+            echo "No PMD issues found. Proceeding with the build."
+          fi
+
+      - name: Create test-results Directory
+        if: steps.generate_package.outputs.changed == 'true'
+        run: mkdir -p test-results
+
+      - name: Run Apex Tests and Generate Coverage Report
+        if: steps.generate_package.outputs.changed == 'true'
+        run: |
+          sfdx apex run test -o developer -s $(cat changed-components.txt | tr '\n' ',' | sed 's/,$//') -r json -d test-results -c -w 10
+          cat test-results/test-result-codecoverage.json
+
+      - name: Calculate and Check Coverage
+        if: steps.generate_package.outputs.changed == 'true'
+        run: |
+          totalCoveredLines=$(jq '[.result.coverage.coveredLines] | add' test-results/test-result-codecoverage.json)
+          totalLines=$(jq '[.result.coverage.totalLines] | add' test-results/test-result-codecoverage.json)
+          coveragePercentage=$(echo "scale=2; ($totalCoveredLines / $totalLines) * 100" | bc)
+          echo "Total Covered Lines: $totalCoveredLines"
+          echo "Total Lines: $totalLines"
+          echo "Coverage Percentage: $coveragePercentage%"
+          if (( $(echo "$coveragePercentage < 80" | bc -l) )); then
+            echo "Code coverage is less than 80%. Failing the build."
+            exit 1
+          else
+            echo "Code coverage is sufficient. Proceeding with the build."
+          fi
