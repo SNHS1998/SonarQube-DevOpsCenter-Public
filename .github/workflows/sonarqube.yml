@@ -109,7 +109,7 @@ jobs:
       - name: Run Apex Tests and Generate Coverage Report
         if: steps.generate_package.outputs.changed == 'true'
         run: |
-          sfdx force:apex:test:run --targetusername developer --suitenames $(cat changed-components.txt | tr '\n' ',' | sed 's/,$//') --resultformat json --outputdir test-results --codecoverage --wait 10
+          sfdx apex run test -o developer -s $(cat changed-components.txt | tr '\n' ',' | sed 's/,$//') -r json -d test-results -c -w 10
           cat test-results/test-result-codecoverage.json
 
       - name: Calculate and Check Coverage

@@ -16,7 +16,7 @@ public with sharing class TemperatureConverter {
         return (fahrenheit - 32) * 5 / 9;
     }
 }
-// This is to sschcbeck the test claxvss trig
+// This is to sschcbeck the test clfdaxvss trig
 //addxvgdfssddfsdf
 //tjysdghfhrhrdgfjxzvvxdgjghdcxvdvczxfgfhsfgdgdfg
 //tjysdghfhrhrfjgzvjghdxzcfhsfgdgdfc

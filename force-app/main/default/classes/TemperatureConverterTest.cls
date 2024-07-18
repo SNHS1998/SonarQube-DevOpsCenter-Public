@@ -44,7 +44,7 @@ private class TemperatureConverterTest {
 
     @isTest
     static void testFahrenheitToCelsiusWithNull() {
-        // Test with null value (should throw an exception)
+        // Test with null value (should throw an exception))
         try {
             TemperatureConverter.fahrenheitToCelsius(null);
             System.assert(false, 'Expected exception for null Fahrenheit value');
